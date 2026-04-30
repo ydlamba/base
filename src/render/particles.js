@@ -64,7 +64,18 @@ export function createParticleSystem({ count = 30000 } = {}) {
   // phosphor even during GATHER while converging particles tint.
   const colorBlendBuffer = instancedArray(count, 'float');
 
-  // ── Init: random spawn, zero velocity ───────────────────────────
+  // ── Init: tight cluster at origin, chaotic plasma explosion ─────
+  // The entry button sits at the centre of the screen (camera looks
+  // at origin), so spawning all 18k particles in a small cluster at
+  // origin makes the button-burst visually continuous.
+  //
+  // Velocity is *mostly random* with a small bias toward each
+  // particle's home position. A clean radial wavefront would read as
+  // a sphere; the random component breaks that symmetry so the
+  // burst feels turbulent instead of geometric. Speed follows a
+  // power-law — most particles slow, a few very fast — which gives
+  // depth and asymmetry to the expansion. Home pull during the 6s
+  // INITIAL_DRIFT corrects each particle to its home position.
   const initCompute = Fn(() => {
     const pos = positionBuffer.element(instanceIndex);
     const vel = velocityBuffer.element(instanceIndex);
@@ -75,32 +86,40 @@ export function createParticleSystem({ count = 30000 } = {}) {
     const h2 = hash(seed.add(31.7));
     const h3 = hash(seed.add(83.9));
     const h4 = hash(seed.add(157.3));
+    const h5 = hash(seed.add(421.1));
+    const h6 = hash(seed.add(523.7));
+    const h7 = hash(seed.add(617.3));
+    const h8 = hash(seed.add(733.9));
 
-    // Wider, non-uniform spawn — particles spread across most of the
-    // visible field at start, not clustered in a small sphere. baseR
-    // gives uniform-by-volume distribution out to 2.5 units; mixing in
-    // a wider random radius pushes ~half of particles further out so
-    // the initial state reads as a dispersed cloud, not a clump.
+    // Home position — the dispersed sphere where this particle will
+    // settle. Same distribution as the previous random spawn.
     const cosT = h2.mul(2).sub(1);
     const sinT = tslSqrt(cosT.mul(-1).add(1).mul(cosT.add(1)));
     const phi  = h3.mul(6.2831853);
     const baseR = tslPow(h1, float(1.0 / 3.0)).mul(2.5);
     const noisyR = mix(baseR, h4.mul(4.0), float(0.50));
-
-    const spawn = vec3(
+    const homePos = vec3(
       sinT.mul(cos(phi)).mul(noisyR),
       sinT.mul(sin(phi)).mul(noisyR),
       cosT.mul(noisyR),
     );
-    pos.assign(spawn);
-    home.assign(spawn);  // remember this for homeward pull during DRIFT
-    // Strong random initial velocity — each particle starts in motion in
-    // its own direction, so the field reads as alive and individuated
-    // from frame 1 instead of waiting for curl/thermal to build it up.
-    const v1 = hash(seed.add(101.7)).sub(0.5).mul(1.4);
-    const v2 = hash(seed.add(211.3)).sub(0.5).mul(1.4);
-    const v3 = hash(seed.add(331.9)).sub(0.5).mul(1.4);
-    vel.assign(vec3(v1, v2, v3));
+    home.assign(homePos);
+
+    // Initial position — tight cluster within ~0.06 units of origin.
+    pos.assign(normalize(homePos).mul(h4.mul(0.06)));
+
+    // Direction — mostly random (chaos), small bias toward home so the
+    // overall mass still expands in a sensible way. ~25% home-biased,
+    // 75% random.
+    const dirRand = vec3(h6.mul(2).sub(1), h7.mul(2).sub(1), h8.mul(2).sub(1));
+    const dirHome = normalize(homePos);
+    const finalDir = normalize(mix(dirRand, dirHome, float(0.25)));
+
+    // Speed — power-law distribution: pow(h5, 2) biases toward 0 so
+    // most particles are slow, a few are fast. Gives a turbulent feel
+    // rather than a uniform shell.
+    const speed = mix(float(1.5), float(14.0), tslPow(h5, float(2.0)));
+    vel.assign(finalDir.mul(speed));
   })().compute(count);
 
   // ── Update kernel ───────────────────────────────────────────────
@@ -108,7 +127,16 @@ export function createParticleSystem({ count = 30000 } = {}) {
   const phaseProgress  = uniform(0);
   const dtUniform      = uniform(1 / 60);
   const mouseWorld     = uniform(new THREE.Vector3());
+  const cursorEnergyU  = uniform(0);
+  const impulseWorld   = uniform(new THREE.Vector3());
+  const impulseLevelU  = uniform(0);
+  const impulseSeedU   = uniform(0);
   const landingPulseU  = uniform(0);                // 0..1 — subtle flash
+  // Entry burst — radial kick applied to all particles for ~0.6s
+  // after the button-hold burst. JS sets it to 1.0 on burst, decays
+  // each frame. Decoupled from phase logic since the entry happens
+  // entirely within INITIAL_DRIFT.
+  const entryBurstU    = uniform(0);
   // Dissolve variety: each cycle picks a different mode + seed so
   // successive dissolves don't look identical.
   const dissolveMode   = uniform(0, 'int');
@@ -162,6 +190,31 @@ export function createParticleSystem({ count = 30000 } = {}) {
     // the cursor through the field opens a void at the same time as it
     // gathers a swarm.
     const cursorPolarity = step(float(0.5), hash(fi.mul(0.0231))).mul(2).sub(1);
+    const cursorPullScale = float(3.0).add(cursorEnergyU.mul(4.5));
+
+    // Local interaction pulse — fired by click/tap. It kicks nearby
+    // particles outward with a little tangential spin, so a tap feels
+    // like disturbing the signal rather than pressing a UI button.
+    const toImpulse = pos.sub(impulseWorld);
+    const impulseDist = tslMax(length(toImpulse), float(0.001));
+    const impulseNear = smoothstep(float(1.45), float(0.05), impulseDist);
+    const impulseCore = smoothstep(float(0.0), float(0.18), impulseDist);
+    const impulseDir = toImpulse.div(impulseDist);
+    const impulseTan = normalize(vec3(toImpulse.y.negate(), toImpulse.x, float(0)));
+    const impulseHash = hash(fi.mul(0.097).add(impulseSeedU.mul(0.311)));
+    const lobeAngle = impulseSeedU.mul(2.371);
+    const lobeDir = vec3(cos(lobeAngle), sin(lobeAngle), float(0));
+    const lobe = smoothstep(float(-0.65), float(0.9), impulseDir.dot(lobeDir));
+    const jitterSeed = vec3(
+      fi.mul(0.181).add(impulseSeedU.mul(0.17)),
+      fi.mul(0.293).add(impulseSeedU.mul(0.23)),
+      fi.mul(0.417).add(impulseSeedU.mul(0.31)),
+    );
+    const impulseJitter = mx_noise_vec3(jitterSeed);
+    const impulseGate = smoothstep(float(0.22), float(0.92), impulseHash);
+    const impulseEnv = impulseNear.mul(impulseCore).mul(impulseLevelU).mul(mix(float(0.25), float(1.25), lobe)).mul(impulseGate);
+    const impulseForce = normalize(impulseDir.mul(0.55).add(impulseTan.mul(0.28)).add(impulseJitter.mul(1.15)))
+      .mul(impulseEnv.mul(20.0));
 
     // Very soft centering — barely a tug, just enough to keep the field
     // on screen over long sessions.
@@ -184,7 +237,14 @@ export function createParticleSystem({ count = 30000 } = {}) {
       const c = saturate(phaseProgress.sub(startT).div(span));
       const eased = c.mul(c).mul(c);   // cubic ease-in
 
-      const force = curlForce.add(thermalForce).add(center);
+      const toMouse = mouseWorld.sub(pos);
+      const dist = tslMax(length(toMouse), float(0.001));
+      const innerFade = smoothstep(float(0.0), float(0.30), dist);
+      const outerFade = smoothstep(float(2.0), float(0.40), dist);
+      const pull = innerFade.mul(outerFade).mul(attractMask).mul(cursorPullScale).mul(0.45);
+      const attractForce = toMouse.div(dist).mul(pull).mul(cursorPolarity);
+
+      const force = curlForce.add(thermalForce).add(center).add(attractForce).add(impulseForce.mul(0.55));
       const driftedVel = vel.mul(0.93).add(force.mul(dtUniform));
       const driftedPos = pos.add(driftedVel.mul(dtUniform));
 
@@ -193,7 +253,7 @@ export function createParticleSystem({ count = 30000 } = {}) {
       newBlend.assign(eased);
     }).ElseIf(phaseIdx.equal(int(PHASE.HOLD)), () => {
       const breathe = sin(uTime.mul(1.5)).mul(0.0008);
-      newPos.assign(tgt.xyz.add(tgt.xyz.mul(breathe)));
+      newPos.assign(tgt.xyz.add(tgt.xyz.mul(breathe)).add(impulseForce.mul(0.0025)));
       newVel.assign(vec3(0));
       newBlend.assign(float(1));
     }).ElseIf(phaseIdx.equal(int(PHASE.DISSOLVE)), () => {
@@ -269,14 +329,14 @@ export function createParticleSystem({ count = 30000 } = {}) {
       const dist = tslMax(length(toMouse), float(0.001));
       const innerFade = smoothstep(float(0.0), float(0.30), dist);
       const outerFade = smoothstep(float(2.0), float(0.40), dist);
-      const pull = innerFade.mul(outerFade).mul(attractMask).mul(3.5);
+      const pull = innerFade.mul(outerFade).mul(attractMask).mul(cursorPullScale);
       const attractForce = toMouse.div(dist).mul(pull).mul(cursorPolarity);
 
       // Boosted thermal during dissolve — the dispersing field shimmers
       // instead of flying in clean straight lines.
       const thermalBoost = thermalForce.mul(1.4);
 
-      const force = curlForce.add(thermalBoost).add(center).add(dissolveForce).add(attractForce);
+      const force = curlForce.add(thermalBoost).add(center).add(dissolveForce).add(attractForce).add(impulseForce);
       const v = vel.mul(0.95).add(force.mul(dtUniform));
       newVel.assign(v);
       newPos.assign(pos.add(v.mul(dtUniform)));
@@ -294,12 +354,26 @@ export function createParticleSystem({ count = 30000 } = {}) {
       const dist = tslMax(length(toMouse), float(0.001));
       const innerFade = smoothstep(float(0.0), float(0.30), dist);
       const outerFade = smoothstep(float(2.0), float(0.40), dist);
-      const pull = innerFade.mul(outerFade).mul(attractMask).mul(3.5);
+      const pull = innerFade.mul(outerFade).mul(attractMask).mul(cursorPullScale);
       const attractForce = toMouse.div(dist).mul(pull).mul(cursorPolarity);
 
       const homeForce = home.sub(pos).mul(0.10);
 
-      const force = curlForce.add(thermalForce).add(homeForce).add(attractForce);
+      // Entry burst — outward kick during the first ~0.6s after the
+      // button-hold bursts. Direction is radial *plus* a strong
+      // per-particle Perlin noise vector, so the wavefront isn't a
+      // clean sphere — it reads as turbulent plasma exploding rather
+      // than a geometric shell expanding.
+      const burstNoiseSeed = vec3(
+        fi.mul(0.131).add(uTime.mul(0.40)),
+        fi.mul(0.273).add(uTime.mul(0.45)),
+        fi.mul(0.419).add(uTime.mul(0.38)),
+      );
+      const burstNoise = mx_noise_vec3(burstNoiseSeed);
+      const entryBurstDir = normalize(normalize(pos).add(burstNoise.mul(1.4)));
+      const entryBurstForce = entryBurstDir.mul(entryBurstU.mul(10.0));
+
+      const force = curlForce.add(thermalForce).add(homeForce).add(attractForce).add(entryBurstForce).add(impulseForce);
       const v = vel.mul(0.93).add(force.mul(dtUniform));
       newVel.assign(v);
       newPos.assign(pos.add(v.mul(dtUniform)));
@@ -422,7 +496,14 @@ export function createParticleSystem({ count = 30000 } = {}) {
     },
     setDt(dt) { dtUniform.value = dt; },
     setMouseWorld(x, y, z = 0) { mouseWorld.value.set(x, y, z); },
+    setCursorEnergy(v) { cursorEnergyU.value = v; },
+    setImpulse(x, y, z = 0, level = 0, seed = 0) {
+      impulseWorld.value.set(x, y, z);
+      impulseLevelU.value = level;
+      impulseSeedU.value = seed;
+    },
     setLandingPulse(v) { landingPulseU.value = v; },
+    setEntryBurst(v)   { entryBurstU.value = v; },
     setDissolveMode(mode, seed) {
       dissolveMode.value = mode;
       dissolveSeedU.value = seed;

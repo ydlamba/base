@@ -20,6 +20,18 @@ import { buildTargets } from './scene/targets.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// ── Boot UI handles — wired at script load ──────────────────────
+const bootEl         = document.getElementById('boot');
+const progressFillEl = bootEl?.querySelector('.progress-fill');
+const buttonEl       = bootEl?.querySelector('.boot-button');
+const chargeFillEl   = bootEl?.querySelector('.charge-fill');
+const debugMode      = new URLSearchParams(window.location.search).has('debug');
+
+function setProgress(pct) {
+  if (progressFillEl) progressFillEl.style.width = pct + '%';
+}
+setProgress(5);
+
 // ── Phase machine ───────────────────────────────────────────────
 // Phase durations (seconds). Slightly tightened from v1 for faster cycles
 // while iterating. Single source of truth for both compute (particles.js)
@@ -75,6 +87,7 @@ try {
   showFatal(`Renderer init failed: ${e.message}`);
   throw e;
 }
+setProgress(35);
 
 // ACES tone mapping maps HDR bloom output back to display range with a
 // pleasing roll-off. Exposure slightly above 1.0 lifts the cathode-archive
@@ -97,8 +110,11 @@ camera.position.set(0, 0, 2.2);
 const particles = createParticleSystem({ count: 18000 });
 scene.add(particles.mesh);
 scene.add(particles.cursorMesh);
+setProgress(50);
 await renderer.computeAsync(particles.initCompute);
+setProgress(68);
 await renderer.computeAsync(particles.cursorInitCompute);
+setProgress(78);
 
 // ── Post-process pipeline ───────────────────────────────────────
 // scenePass → CA (subtle baseline + HOLD modulation) → + bloom → tone map
@@ -115,6 +131,7 @@ const aberrated  = chromaticAberration(sceneColor, caStrength, vec2(0.5), float(
 
 const pipeline = new THREE.RenderPipeline(renderer);
 pipeline.outputNode = aberrated.add(bloomPass);
+setProgress(88);
 
 // Generate first logogram + targets so they're ready when GATHER begins.
 // Each cycle picks a bell pitch from a pentatonic so successive HOLDs feel
@@ -161,22 +178,27 @@ function regenerate(cycle = 0) {
   return seed;
 }
 regenerate(0);
+setProgress(95);
 
-// ── Audio unlock + hint flow ────────────────────────────────────
+// Pre-warm: compile the compute kernels and render pipeline before the
+// entry button appears. dt=0 keeps the initial particle cluster intact
+// while avoiding first-interaction shader work.
+particles.setDt(0);
+particles.setPhase(PHASE.DRIFT, 0);
+particles.setMouseWorld(0, 0, 0);
+particles.setCursorEnergy(0);
+particles.setImpulse(0, 0, 0, 0, 0);
+particles.setLandingPulse(0);
+particles.setEntryBurst(0);
+await renderer.computeAsync(particles.cursorUpdateCompute);
+await renderer.computeAsync(particles.updateCompute);
+await pipeline.renderAsync();
+setProgress(100);
+
+// ── Audio hint — kept as a fallback element but the entry button is
+// now the audio-unlock gesture, so the timed auto-show is gone.
 const audioHintEl = document.getElementById('audio-hint');
-if (!reducedMotion) {
-  Audio.setOnUnlock(() => {
-    if (!audioHintEl) return;
-    audioHintEl.classList.remove('show');
-    audioHintEl.classList.add('hide');
-    setTimeout(() => audioHintEl.parentNode && audioHintEl.parentNode.removeChild(audioHintEl), 1100);
-  });
-  Audio.attachUnlockListeners();
-  Audio.tryStart(); // most browsers defer until first gesture
-  setTimeout(() => {
-    if (!Audio.isStarted() && audioHintEl) audioHintEl.classList.add('show');
-  }, 2000);
-} else if (audioHintEl && audioHintEl.parentNode) {
+if (audioHintEl && audioHintEl.parentNode && reducedMotion) {
   audioHintEl.parentNode.removeChild(audioHintEl);
 }
 
@@ -190,16 +212,19 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ── Debug status overlay (phase + progress) ─────────────────────
-const statusEl = document.createElement('div');
-statusEl.style.cssText =
-  'position:fixed;left:50%;top:1.25rem;transform:translateX(-50%);' +
-  'color:rgba(232,236,240,.45);font:0.70rem/1 ui-monospace,JetBrains Mono,monospace;' +
-  'letter-spacing:0.06em;pointer-events:none;user-select:none;z-index:10;';
-document.body.appendChild(statusEl);
+const statusEl = debugMode ? document.createElement('div') : null;
+if (statusEl) {
+  statusEl.style.cssText =
+    'position:fixed;left:50%;top:1.25rem;transform:translateX(-50%);' +
+    'color:rgba(232,236,240,.45);font:0.70rem/1 ui-monospace,JetBrains Mono,monospace;' +
+    'letter-spacing:0.06em;pointer-events:none;user-select:none;z-index:10;';
+  document.body.appendChild(statusEl);
+}
 
 // ── Hint UI + mouse tracking ────────────────────────────────────
 const idleHintEl = document.getElementById('idle-hint');
 const ghEl       = document.getElementById('gh');
+const noteEl     = document.getElementById('note');
 
 const MOVE_THRESHOLD_PX = 8;
 const IDLE_THRESHOLD_MS = 10000;
@@ -209,6 +234,53 @@ let mouseScreenY = window.innerHeight / 2;
 let mouseInPage = false;
 let lastMoveTime = performance.now();
 let idleHintShowing = false;
+let prevPointerX = mouseScreenX;
+let prevPointerY = mouseScreenY;
+let prevPointerT = performance.now();
+let cursorEnergy = 0;
+let impulseLevel = 0;
+let impulseSeed = 0;
+const impulseWorld = new THREE.Vector3();
+
+function screenToWorld(x, y) {
+  const ndcX = (x / window.innerWidth) * 2 - 1;
+  const ndcY = -((y / window.innerHeight) * 2 - 1);
+  const halfH = Math.tan((camera.fov * Math.PI / 180) / 2) * camera.position.z;
+  const halfW = halfH * camera.aspect;
+  return new THREE.Vector3(ndcX * halfW, ndcY * halfH, 0);
+}
+
+function spawnSignalDisturbance(x, y) {
+  if (reducedMotion) return;
+  const count = 10 + Math.floor(Math.random() * 12);
+  const bias = Math.random() * Math.PI * 2;
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement('div');
+    el.className = 'signal-shard';
+    el.style.setProperty('--x', x + (Math.random() - 0.5) * 14 + 'px');
+    el.style.setProperty('--y', y + (Math.random() - 0.5) * 14 + 'px');
+    const angle = bias + (Math.random() - 0.5) * Math.PI * 1.7;
+    const dist = 24 + Math.random() * 92;
+    el.style.setProperty('--tx', Math.cos(angle) * dist + 'px');
+    el.style.setProperty('--ty', Math.sin(angle) * dist + 'px');
+    el.style.setProperty('--rot', angle + (Math.random() - 0.5) * 1.2 + 'rad');
+    el.style.setProperty('--spin', (Math.random() - 0.5) * 1.6 + 'rad');
+    el.style.setProperty('--w', 8 + Math.random() * 38 + 'px');
+    el.style.setProperty('--dur', 0.34 + Math.random() * 0.32 + 's');
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 720);
+  }
+}
+
+function fireSignalProbe(x, y, strength = 1) {
+  if (startTime < 0 || reducedMotion) return;
+  const world = screenToWorld(x, y);
+  impulseWorld.copy(world);
+  impulseSeed = Math.random() * 1000;
+  impulseLevel = Math.max(impulseLevel, strength);
+  cursorEnergy = Math.max(cursorEnergy, strength * 0.85);
+  spawnSignalDisturbance(x, y);
+}
 
 function setIdleHint(visible) {
   if (!idleHintEl) return;
@@ -218,6 +290,14 @@ function setIdleHint(visible) {
 }
 
 function noteMouseMove(x, y) {
+  const now = performance.now();
+  const dt = Math.max(16, now - prevPointerT);
+  const speed = Math.hypot(x - prevPointerX, y - prevPointerY) / dt;
+  cursorEnergy = Math.max(cursorEnergy, Math.min(1, speed * 0.22));
+  prevPointerX = x;
+  prevPointerY = y;
+  prevPointerT = now;
+
   mouseScreenX = x; mouseScreenY = y;
   mouseInPage = true;
   if (firstMouseX === null) { firstMouseX = x; firstMouseY = y; return; }
@@ -229,11 +309,17 @@ function noteMouseMove(x, y) {
   }
 }
 window.addEventListener('mousemove', e => noteMouseMove(e.clientX, e.clientY));
+window.addEventListener('pointerdown', e => {
+  if (e.button !== undefined && e.button !== 0) return;
+  if (e.target?.closest?.('#gh')) return;
+  noteMouseMove(e.clientX, e.clientY);
+  fireSignalProbe(e.clientX, e.clientY, 1);
+});
 window.addEventListener('touchmove', e => {
   if (e.touches.length) noteMouseMove(e.touches[0].clientX, e.touches[0].clientY);
 }, { passive: true });
 
-// Continuous idle detector — only surface "move your cursor" during DRIFT.
+// Continuous idle detector — only surface the interaction hint during DRIFT.
 setInterval(() => {
   const elapsed = (performance.now() - startTime) / 1000;
   const phase   = phaseAt(elapsed);
@@ -271,8 +357,11 @@ resize();
 window.addEventListener('resize', resize);
 
 // ── Frame loop ──────────────────────────────────────────────────
-const startTime = performance.now();
-let last = startTime;
+// startTime is only set when the entry button bursts — until then the
+// loop runs (so dt timing stays warm) but exits early. Setting it on
+// burst makes the cycle clock begin from that moment.
+let startTime = -1;
+let last = -1;
 let prevPhaseIdx = -1;
 // Marker for the most recent GATHER → HOLD landing event. The brightness
 // pulse decays from this moment — combined with the simultaneously-
@@ -280,6 +369,7 @@ let prevPhaseIdx = -1;
 let lastLandingTime = -1000;
 
 renderer.setAnimationLoop(async (now) => {
+  if (startTime < 0) return;
   const dt      = Math.min((now - last) / 1000, 1 / 20);
   last          = now;
   const elapsed = (now - startTime) / 1000;
@@ -319,17 +409,19 @@ renderer.setAnimationLoop(async (now) => {
   // Project mouse from screen pixels onto the z=0 plane in world space.
   // Off-screen / not-yet-tracked → cursor parks at origin.
   if (mouseInPage) {
-    const ndcX = (mouseScreenX / window.innerWidth) * 2 - 1;
-    const ndcY = -((mouseScreenY / window.innerHeight) * 2 - 1);
-    const halfH = Math.tan((camera.fov * Math.PI / 180) / 2) * camera.position.z;
-    const halfW = halfH * camera.aspect;
-    particles.setMouseWorld(ndcX * halfW, ndcY * halfH, 0);
+    const world = screenToWorld(mouseScreenX, mouseScreenY);
+    particles.setMouseWorld(world.x, world.y, world.z);
   } else {
     particles.setMouseWorld(0, 0, 0);
   }
 
+  cursorEnergy *= Math.exp(-dt * 2.4);
+  impulseLevel *= Math.exp(-dt * 5.2);
+
   particles.setDt(dt);
   particles.setPhase(phase.idx, phase.progress);
+  particles.setCursorEnergy(cursorEnergy);
+  particles.setImpulse(impulseWorld.x, impulseWorld.y, impulseWorld.z, impulseLevel, impulseSeed);
 
   // ── Landing-coordinated visual events ─────────────────────────
   // holdGlow ramps from 0→1 across the entire GATHER (so particle
@@ -348,16 +440,26 @@ renderer.setAnimationLoop(async (now) => {
   // Subtle brightness flash at the landing moment — accent, not flash.
   const landingPulse = Math.max(0, Math.exp(-(elapsed - lastLandingTime) * LANDING.PULSE_DECAY));
 
-  caStrength.value = 0.30 + holdGlow * 0.40 + landingPulse * 0.15;
+  caStrength.value =
+    0.30 + holdGlow * 0.40 + landingPulse * 0.15 +
+    entryBurstLevel * 0.50 + cursorEnergy * 0.12 + impulseLevel * 0.22;
   particles.setLandingPulse(landingPulse);
+  // Entry burst — radial kick on all particles for ~0.6s after the
+  // hold-button bursts, then decays out. Same envelope used to spike
+  // the chromatic aberration above so the visual surge syncs.
+  particles.setEntryBurst(entryBurstLevel);
+  if (entryBurstLevel > 0.001) entryBurstLevel *= 0.93;
+  else                         entryBurstLevel = 0;
 
   await renderer.computeAsync(particles.cursorUpdateCompute);
   await renderer.computeAsync(particles.updateCompute);
   await pipeline.renderAsync();
 
-  statusEl.textContent =
-    `${isWebGPU ? 'WebGPU' : 'WebGL2'} · ${particles.count.toLocaleString()} · ` +
-    `${PHASE_NAME[phase.idx]} ${(phase.progress * 100).toFixed(0)}%`;
+  if (statusEl) {
+    statusEl.textContent =
+      `${isWebGPU ? 'WebGPU' : 'WebGL2'} · ${particles.count.toLocaleString()} · ` +
+      `${PHASE_NAME[phase.idx]} ${(phase.progress * 100).toFixed(0)}%`;
+  }
 });
 
 function showFatal(msg) {
@@ -368,3 +470,169 @@ function showFatal(msg) {
     'font:13px ui-monospace,monospace;white-space:pre-wrap;z-index:9999;';
   document.body.appendChild(el);
 }
+
+// ── Entry: progress → click-and-hold → burst ─────────────────────
+// Loading is done (we're past `await pipeline.renderAsync()`); show
+// the button. Mouse/touch/keyboard hold builds the charge meter +
+// audio rumble + screen shake; reaching 1.0 fires the burst, which
+// starts the animation clock and fades the overlay.
+
+const FULL_CHARGE_TIME = 1.2;   // seconds of holding to fully charge
+const DRAIN_RATE        = 1.6;  // 1/sec — release-then-resume drains a bit faster than it fills
+
+let charge        = 0;
+let holding       = false;
+let chargeAnim    = false;
+let lastChargeT   = 0;
+let bursting      = false;
+
+// Hand off to the live state — set boot.ready so the button fades in.
+function showButton() {
+  if (!bootEl || !buttonEl) {
+    // Fallback: no boot UI in DOM, just start immediately.
+    triggerBurst({ silent: true });
+    return;
+  }
+  setTimeout(() => bootEl.classList.add('ready'), 280);
+}
+showButton();
+
+if (buttonEl) {
+  // pointerdown handles mouse + touch + pen with one listener; pointerup
+  // listens on window so dragging off the button still releases.
+  buttonEl.addEventListener('pointerdown', e => { e.preventDefault(); onHoldStart(); });
+  window.addEventListener('pointerup', onHoldEnd);
+  window.addEventListener('pointercancel', onHoldEnd);
+  // Keyboard: space/enter while button is focused.
+  buttonEl.addEventListener('keydown', e => {
+    if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); onHoldStart(); }
+  });
+  buttonEl.addEventListener('keyup', e => {
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onHoldEnd(); }
+  });
+}
+
+function onHoldStart() {
+  if (bursting) return;
+  // Reduced-motion users: a single press enters immediately. The hold
+  // ritual is the whole point of the gesture — without animation it
+  // would just be a silent 1.2s wait, so skip it.
+  if (reducedMotion) {
+    if (!Audio.isStarted()) Audio.tryStart();
+    triggerBurst();
+    return;
+  }
+  if (!holding) {
+    holding = true;
+    bootEl.classList.add('holding');
+    if (!Audio.isStarted()) {
+      Audio.tryStart();
+      Audio.startChargeTone();
+    }
+    if (!chargeAnim) {
+      chargeAnim = true;
+      lastChargeT = performance.now();
+      requestAnimationFrame(chargeStep);
+    }
+  }
+}
+
+function onHoldEnd() {
+  if (!holding || bursting) return;
+  holding = false;
+  bootEl.classList.remove('holding');
+}
+
+function chargeStep() {
+  const now = performance.now();
+  const dt = Math.max(0, (now - lastChargeT) / 1000);
+  lastChargeT = now;
+
+  if (holding) charge = Math.min(1, charge + dt / FULL_CHARGE_TIME);
+  else         charge = Math.max(0, charge - dt * DRAIN_RATE);
+
+  if (chargeFillEl) chargeFillEl.style.width = (charge * 100) + '%';
+  if (!reducedMotion) Audio.setChargeLevel(charge);
+
+  // Smooth pressure, not shake. Random transforms here made the first
+  // interaction feel like dropped frames even when the browser was fine.
+  const target = bootEl.querySelector('.boot-content');
+  if (target && !reducedMotion) {
+    const scale = 1 + charge * 0.018;
+    target.style.transform = `scale(${scale.toFixed(4)})`;
+  }
+
+  if (charge >= 1) {
+    triggerBurst();
+    return;
+  }
+  if (charge > 0 || holding) {
+    requestAnimationFrame(chargeStep);
+  } else {
+    chargeAnim = false;
+    if (target) target.style.transform = '';
+  }
+}
+
+function spawnMiniParticles(cx, cy) {
+  const count = reducedMotion ? 12 : 48;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('div');
+    p.className = 'mini-particle';
+    p.style.left = cx + 'px';
+    p.style.top  = cy + 'px';
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 260 + Math.random() * 820;
+    const size  = (2 + Math.random() * 4).toFixed(1);
+    p.style.setProperty('--tx',   (Math.cos(angle) * speed).toFixed(0) + 'px');
+    p.style.setProperty('--ty',   (Math.sin(angle) * speed).toFixed(0) + 'px');
+    p.style.setProperty('--size', size + 'px');
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 1300);
+  }
+}
+
+function triggerBurst({ silent = false } = {}) {
+  if (bursting) return;
+  bursting = true;
+  holding = false;
+
+  const burstNow = performance.now();
+  startTime = burstNow;
+  last = burstNow;
+  entryBurstLevel = 1.0;
+
+  // Visual burst — button dissolves, a small DOM spray starts on the
+  // next frame, and the GPU field carries the main release.
+  if (bootEl) bootEl.classList.add('bursting');
+  const target = bootEl?.querySelector('.boot-content');
+  if (target) target.style.transform = '';
+
+  if (!silent) {
+    requestAnimationFrame(() => {
+      Audio.stopChargeTone();
+      Audio.burstSound();
+      // Drone takes over the audio bed from the burst onward.
+      Audio.bootDrone();
+    });
+  } else {
+    Audio.bootDrone();
+  }
+
+  if (buttonEl && !silent) {
+    const r = buttonEl.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top  + r.height / 2;
+    requestAnimationFrame(() => spawnMiniParticles(cx, cy));
+  }
+
+  setTimeout(() => bootEl?.classList.add('exiting'), 90);
+  setTimeout(() => noteEl?.classList.add('show'), 1400);
+  setTimeout(() => {
+    if (bootEl?.parentNode) bootEl.parentNode.removeChild(bootEl);
+  }, 1200);
+}
+
+// Entry burst level (0..1) — set to 1 on burst, decayed in the frame
+// loop. Drives the WebGPU radial kick.
+let entryBurstLevel = 0;

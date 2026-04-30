@@ -15,8 +15,12 @@
 let actx = null;
 let masterGain = null;
 let audioStarted = false;
+let droneBooted = false;
+let unlockNotified = false;
 let onUnlockCb = null;
 let holdToneNodes = null;
+let chargeOscs = null;
+let chargeGain = null;
 
 // ── Mood-aware sound profiles ──────────────────────────────────
 
@@ -94,30 +98,70 @@ export function getTime()    { return actx ? actx.currentTime : 0; }
 
 export function setOnUnlock(cb) { onUnlockCb = cb; }
 
-export function tryStart() {
-  if (audioStarted) return;
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return;
-  if (!actx) { try { actx = new AC(); } catch (e) { return; } }
-  if (actx.state === 'suspended') actx.resume().catch(() => {});
-  if (actx.state === 'running') {
-    _bootDrone();
-    audioStarted = true;
-    if (onUnlockCb) onUnlockCb();
-  }
+function ensureMasterGraph() {
+  if (!actx || masterGain) return;
+  masterGain = actx.createGain();
+  masterGain.gain.value = 0.55;
+  masterGain.connect(actx.destination);
 }
 
-// Attach persistent listeners to explicit gestures only.
+function markStarted() {
+  audioStarted = true;
+  if (!unlockNotified && onUnlockCb) onUnlockCb();
+  unlockNotified = true;
+}
+
+// Unlock the audio context. Does NOT start the drone — the entry
+// gesture (button-hold) calls this on press to ready the context for
+// the charge tone, then bootDrone() fires later on burst.
+export function tryStart() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC && !actx) return false;
+  if (!actx) { try { actx = new AC(); } catch (e) { return false; } }
+  ensureMasterGraph();
+
+  if (actx.state === 'closed') return false;
+
+  if (actx.state === 'running') {
+    markStarted();
+    return true;
+  }
+
+  if (typeof actx.resume === 'function') {
+    // Treat the graph as unlocked immediately after a real gesture so
+    // sounds can be scheduled in this call stack. resume() resolves a
+    // tick later on several browsers, and contexts may become suspended
+    // again after tab visibility changes.
+    markStarted();
+    const resumeResult = actx.resume();
+    if (resumeResult && typeof resumeResult.then === 'function') {
+      resumeResult.then(markStarted).catch(() => {});
+    }
+    return true;
+  }
+
+  markStarted();
+  return true;
+}
+
+// Attach persistent listeners to explicit gestures only. Kept for
+// callers that don't have their own unlock trigger.
 export function attachUnlockListeners() {
   ['pointerdown','mousedown','click','keydown','touchstart','touchend'].forEach(ev =>
     window.addEventListener(ev, tryStart, { passive: true, capture: true }));
 }
 
-// ── Internal: drone bed (called once on first unlock) ───────────
+// Start the continuous drone bed. Called from the entry sequence at
+// burst time (separated from unlock so the charge tone can occupy the
+// hold phase without competing with the drone).
+export function bootDrone() {
+  if (!audioStarted || !actx || !masterGain || droneBooted) return;
+  droneBooted = true;
+  _bootDrone();
+}
+
+// ── Internal: drone bed ─────────────────────────────────────────
 function _bootDrone() {
-  masterGain = actx.createGain();
-  masterGain.gain.value = 0.55;
-  masterGain.connect(actx.destination);
   const t0 = actx.currentTime;
 
   // Warmer drone — paired notes with subtle beating, dropped harsh top.
@@ -273,4 +317,128 @@ export function stopHoldTone() {
     o.stop(t + 1.8);
   });
   holdToneNodes = null;
+}
+
+// ── Charge tone — low rumble that builds while the entry button is
+// held. Volume is driven externally via setChargeLevel(0..1).
+export function startChargeTone() {
+  if (!actx || !masterGain || chargeOscs) return;
+  chargeGain = actx.createGain();
+  chargeGain.gain.value = 0;
+  chargeGain.connect(masterGain);
+
+  // Three layered sines — root, fifth above, octave above with slight
+  // detune. Reads as a deep mechanical hum waking up.
+  const o1 = actx.createOscillator(); o1.type = 'sine'; o1.frequency.value = 55;
+  const o2 = actx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 82.5;
+  const o3 = actx.createOscillator(); o3.type = 'sine'; o3.frequency.value = 110; o3.detune.value = -7;
+
+  o1.connect(chargeGain);
+  o2.connect(chargeGain);
+  o3.connect(chargeGain);
+  o1.start(); o2.start(); o3.start();
+  chargeOscs = [o1, o2, o3];
+}
+
+export function setChargeLevel(level) {
+  if (!chargeGain || !actx) return;
+  // Squared mapping — quiet at start of hold, swells fast near full.
+  const target = Math.max(0, Math.min(1, level));
+  const t = actx.currentTime;
+  chargeGain.gain.cancelScheduledValues(t);
+  chargeGain.gain.setValueAtTime(chargeGain.gain.value, t);
+  chargeGain.gain.linearRampToValueAtTime(target * target * 0.20, t + 0.06);
+}
+
+export function stopChargeTone() {
+  if (!chargeOscs || !actx) return;
+  const t = actx.currentTime;
+  chargeGain.gain.cancelScheduledValues(t);
+  chargeGain.gain.setValueAtTime(chargeGain.gain.value, t);
+  chargeGain.gain.linearRampToValueAtTime(0, t + 0.25);
+  const oscs = chargeOscs;
+  chargeOscs = null;
+  setTimeout(() => { oscs.forEach(o => { try { o.stop(); } catch (e) {} }); }, 320);
+}
+
+// ── Burst — heavy audiovisual impact when the hold completes.
+// Layered sub-bass + mid thump + high transient crack + filtered
+// noise shimmer + bell ping. Pairs with the visual button explosion
+// at the same instant; carries the weight of the moment.
+export function burstSound() {
+  if (!actx || !masterGain) return;
+  const t0 = actx.currentTime;
+
+  // Sub-bass kick — drops from 130 Hz to 25 Hz fast, thick attack.
+  const sub = actx.createOscillator();
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(130, t0);
+  sub.frequency.exponentialRampToValueAtTime(25, t0 + 0.45);
+  const subG = actx.createGain();
+  subG.gain.setValueAtTime(0, t0);
+  subG.gain.linearRampToValueAtTime(0.65, t0 + 0.015);
+  subG.gain.exponentialRampToValueAtTime(0.001, t0 + 1.1);
+  sub.connect(subG).connect(masterGain);
+  sub.start(t0); sub.stop(t0 + 1.2);
+
+  // Mid thump — adds body so the kick reads on small speakers too.
+  const mid = actx.createOscillator();
+  mid.type = 'triangle';
+  mid.frequency.setValueAtTime(180, t0);
+  mid.frequency.exponentialRampToValueAtTime(60, t0 + 0.6);
+  const midG = actx.createGain();
+  midG.gain.setValueAtTime(0, t0);
+  midG.gain.linearRampToValueAtTime(0.30, t0 + 0.02);
+  midG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.9);
+  mid.connect(midG).connect(masterGain);
+  mid.start(t0); mid.stop(t0 + 1.0);
+
+  // Initial transient crack — short white-noise burst through a
+  // highpass, gives the moment an attack edge.
+  const crackLen = Math.floor(actx.sampleRate * 0.18);
+  const crackBuf = actx.createBuffer(1, crackLen, actx.sampleRate);
+  const cd = crackBuf.getChannelData(0);
+  for (let i = 0; i < crackLen; i++) cd[i] = (Math.random() * 2 - 1);
+  const crack = actx.createBufferSource();
+  crack.buffer = crackBuf;
+  const hp = actx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 1800; hp.Q.value = 0.7;
+  const crackG = actx.createGain();
+  crackG.gain.setValueAtTime(0, t0);
+  crackG.gain.linearRampToValueAtTime(0.18, t0 + 0.005);
+  crackG.gain.exponentialRampToValueAtTime(0.001, t0 + 0.20);
+  crack.connect(hp).connect(crackG).connect(masterGain);
+  crack.start(t0); crack.stop(t0 + 0.22);
+
+  // Long shimmer — bandpass-filtered noise sweep.
+  const shLen = Math.floor(actx.sampleRate * 1.4);
+  const shBuf = actx.createBuffer(1, shLen, actx.sampleRate);
+  const sd = shBuf.getChannelData(0);
+  for (let i = 0; i < shLen; i++) sd[i] = (Math.random() * 2 - 1) * 0.4;
+  const shimmer = actx.createBufferSource();
+  shimmer.buffer = shBuf;
+  const bp = actx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.Q.value = 3.5;
+  bp.frequency.setValueAtTime(2800, t0);
+  bp.frequency.exponentialRampToValueAtTime(700, t0 + 1.1);
+  const shimmerG = actx.createGain();
+  shimmerG.gain.setValueAtTime(0, t0);
+  shimmerG.gain.linearRampToValueAtTime(0.13, t0 + 0.04);
+  shimmerG.gain.exponentialRampToValueAtTime(0.001, t0 + 1.3);
+  shimmer.connect(bp).connect(shimmerG).connect(masterGain);
+  shimmer.start(t0); shimmer.stop(t0 + 1.5);
+
+  // Bell ping — sustained chord that hangs after the impact.
+  [[1, 0.075], [2, 0.040], [3, 0.020], [4, 0.012]].forEach(([h, gain]) => {
+    const oo = actx.createOscillator();
+    oo.type = 'sine';
+    oo.frequency.value = 220 * h;
+    const gg = actx.createGain();
+    gg.gain.setValueAtTime(0, t0 + 0.05);
+    gg.gain.linearRampToValueAtTime(gain, t0 + 0.10);
+    gg.gain.exponentialRampToValueAtTime(0.001, t0 + 1.8);
+    oo.connect(gg).connect(masterGain);
+    oo.start(t0 + 0.05);
+    oo.stop(t0 + 1.9);
+  });
 }
