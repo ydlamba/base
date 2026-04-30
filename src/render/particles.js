@@ -156,6 +156,13 @@ export function createParticleSystem({ count = 30000 } = {}) {
     const susceptibility = hash(fi.mul(0.0173).add(uTime.mul(0.40)));
     const attractMask = smoothstep(float(0.65), float(0.75), susceptibility);
 
+    // Per-particle cursor polarity — 50/50 attract vs repel, persistent
+    // identity. Half the susceptible particles flock toward the cursor
+    // (attractors), the other half flee from it (repellers), so moving
+    // the cursor through the field opens a void at the same time as it
+    // gathers a swarm.
+    const cursorPolarity = step(float(0.5), hash(fi.mul(0.0231))).mul(2).sub(1);
+
     // Very soft centering — barely a tug, just enough to keep the field
     // on screen over long sessions.
     const center = pos.mul(-0.025);
@@ -256,13 +263,14 @@ export function createParticleSystem({ count = 30000 } = {}) {
 
       dissolveForce.assign(dissolveForce.mul(sparkBoost));
 
-      // Attraction: same orbit-not-collapse profile as DRIFT.
+      // Attraction: same orbit-not-collapse profile as DRIFT, with per-
+      // particle polarity flipping ~half into repellers.
       const toMouse = mouseWorld.sub(pos);
       const dist = tslMax(length(toMouse), float(0.001));
       const innerFade = smoothstep(float(0.0), float(0.30), dist);
       const outerFade = smoothstep(float(2.0), float(0.40), dist);
       const pull = innerFade.mul(outerFade).mul(attractMask).mul(3.5);
-      const attractForce = toMouse.div(dist).mul(pull);
+      const attractForce = toMouse.div(dist).mul(pull).mul(cursorPolarity);
 
       // Boosted thermal during dissolve — the dispersing field shimmers
       // instead of flying in clean straight lines.
@@ -287,7 +295,7 @@ export function createParticleSystem({ count = 30000 } = {}) {
       const innerFade = smoothstep(float(0.0), float(0.30), dist);
       const outerFade = smoothstep(float(2.0), float(0.40), dist);
       const pull = innerFade.mul(outerFade).mul(attractMask).mul(3.5);
-      const attractForce = toMouse.div(dist).mul(pull);
+      const attractForce = toMouse.div(dist).mul(pull).mul(cursorPolarity);
 
       const homeForce = home.sub(pos).mul(0.10);
 
