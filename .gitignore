@@ -1,0 +1,21 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local dev
+node_modules/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.local
+*.pem
