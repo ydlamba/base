@@ -1,24 +1,30 @@
 // ────────────────────────────────────────────────────────────────
 // GPU-resident particle system with phase-driven convergence.
 //
-// Buffers:
-//   position  (vec3 storage)  — current world position
-//   velocity  (vec3 storage)  — drift velocity
-//   start     (vec3 storage)  — captured at GATHER begin (lerp source)
-//   target    (DataTexture)   — CPU-written, sampled by index in compute
+// State buffers (all GPU-resident, never copied back to JS):
+//   position  vec3 storage  — current world position
+//   velocity  vec3 storage  — drift velocity
+//   home      vec3 storage  — spawn position; gentle homeward pull
+//                              during DRIFT brings the field back to its
+//                              initial dispersed state after each cycle
+//   colorBlend float storage — per-particle 0..1 blend toward accent
+//                              color, written by the compute kernel
+//                              based on each particle's actual
+//                              convergence state
+//   target    DataTexture   — CPU-written per cycle, sampled by index
+//                              in compute. A texture rather than a
+//                              storage buffer because Three.js's WebGL2
+//                              compute emulation doesn't reliably
+//                              re-upload storage buffers from CPU.
 //
-// Why a texture for target: Three.js's WebGL2 fallback ping-pongs storage
-// buffers as render targets, and a CPU-side `needsUpdate` doesn't reliably
-// re-upload through that emulation path. Texture uploads are universally
-// well-supported, so packing per-particle targets into an RGBA32F texture
-// and fetching by `(instanceIndex % W, instanceIndex / W)` works
-// identically on WebGPU and WebGL2.
+// Two compute kernels run per frame: the main update (curl + thermal +
+// phase logic + cursor attraction) and the cursor cluster orbit.
 // ────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three/webgpu';
 import {
   Fn, instanceIndex, instancedArray, uniform, time as uTime,
-  vec3, vec4, ivec2, float, int, sin, cos, hash, mx_noise_vec3, color,
+  vec3, ivec2, float, int, sin, cos, hash, mx_noise_vec3, color,
   length, smoothstep, uv, mix, saturate, If, oneMinus, max as tslMax,
   pow as tslPow, sqrt as tslSqrt, normalize, textureLoad, step,
 } from 'three/tsl';
@@ -29,8 +35,6 @@ export const PHASE = Object.freeze({
   HOLD: 2,
   DISSOLVE: 3,
 });
-
-const CONV_DUR = 0.40;
 
 export function createParticleSystem({ count = 30000 } = {}) {
   // ── Target texture (CPU-writable, sampled by compute) ───────────
@@ -104,8 +108,7 @@ export function createParticleSystem({ count = 30000 } = {}) {
   const phaseProgress  = uniform(0);
   const dtUniform      = uniform(1 / 60);
   const mouseWorld     = uniform(new THREE.Vector3());
-  const holdGlowU      = uniform(0);                // 0..1 — gradual tint
-  const landingPulseU  = uniform(0);                // 0..1 — sharp flash
+  const landingPulseU  = uniform(0);                // 0..1 — subtle flash
   // Dissolve variety: each cycle picks a different mode + seed so
   // successive dissolves don't look identical.
   const dissolveMode   = uniform(0, 'int');
@@ -379,7 +382,6 @@ export function createParticleSystem({ count = 30000 } = {}) {
     },
     setDt(dt) { dtUniform.value = dt; },
     setMouseWorld(x, y, z = 0) { mouseWorld.value.set(x, y, z); },
-    setHoldGlow(v) { holdGlowU.value = v; },
     setLandingPulse(v) { landingPulseU.value = v; },
     setDissolveMode(mode, seed) {
       dissolveMode.value = mode;

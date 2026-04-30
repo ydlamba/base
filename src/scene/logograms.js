@@ -1,18 +1,24 @@
 // ────────────────────────────────────────────────────────────────
-// Procedural logogram generator — structured glyph system.
+// Procedural logogram generator.
 //
-// Design philosophy: these are *communication symbols*, not abstract art.
-// Every element has a reason to be where it is. The main ring is a frame;
-// interior elements attach to it or echo its geometry. Anchor angles create
-// rhythm; terminals (dots, hooks) mark stroke endings. Negative space is
-// as intentional as positive space.
+// Design philosophy: these are communication symbols, not abstract art.
+// Every element has a reason to be where it is. The main ring is the
+// frame; interior elements attach to it or echo its geometry. Anchor
+// angles create rhythm; terminals (dots, hooks) mark stroke endings.
 //
-// Structural rule: interior elements are MUTUALLY EXCLUSIVE per glyph.
-// A symbol picks ONE interior strategy (inner ring, arches, spokes, or
-// cross-strokes) and commits to it. This prevents the "white soup" effect
-// where everything crowds the center.
+// Structure:
+//   1. Shape primitives — small leaf functions that build a single
+//      stroke or disc element (ring, arc, polygon, hook, splat, ...)
+//   2. Inner-element picker — randomly chooses ring / polygon /
+//      rectangle wherever an interior support is needed
+//   3. Archetypes — coherent grammars that compose primitives into a
+//      single visual idea (eye, vessel, compass, beacon, ...). Each
+//      glyph commits to one archetype so its parts speak to each other.
+//   4. Main generator — picks an archetype, runs it, then layers a
+//      "dressing" pass of small accents and ticks so no glyph reads
+//      as bare. Mood (thickness scale) varies the overall weight.
 //
-// Returns a `{ seed, elements }` object. Each element is either:
+// Returns `{ seed, elements }` where each element is:
 //   { type: 'stroke', points: [{x,y}], thickness: [number] }
 //   { type: 'disc',   center: {x,y}, radius: number }
 // ────────────────────────────────────────────────────────────────
@@ -221,27 +227,6 @@ function makeSatellite(rng, ring, angle) {
   }, (t) => {
     const a = t * Math.PI * 2;
     return tk * (0.85 + Math.sin(a * 2) * 0.15);
-  });
-}
-
-// ── Cross-stroke — straight or gently curved interior line ──────
-
-function makeCrossStroke(rng, angle) {
-  const N = 90;
-  const ca = Math.cos(angle), sa = Math.sin(angle);
-  const len = 0.18 + rng() * 0.18; // capped short — stays interior
-  const cx = ca * len * 0.5;
-  const cy = sa * len * 0.5;
-  const curve = (rng() - 0.5) * 0.10;
-  const tk = 0.012 + rng() * 0.014;
-  return strokeFromFn(N, (t) => {
-    const u = (t - 0.5) * 2; // -1..1
-    const x = cx + ca * u * len * 0.5 + sa * curve * (1 - u*u);
-    const y = cy + sa * u * len * 0.5 - ca * curve * (1 - u*u);
-    return { x, y };
-  }, (t) => {
-    const taper = 1 - Math.abs(t - 0.5) * 1.6;
-    return tk * Math.max(0.2, taper) + 0.003;
   });
 }
 

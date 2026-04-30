@@ -1,10 +1,12 @@
 // ────────────────────────────────────────────────────────────────
-// lamba.sh — Three.js + WebGPURenderer (with automatic WebGL2 fallback).
+// lamba.sh entry — bootstraps the WebGPU renderer (with automatic
+// WebGL2 fallback), particle system, audio, post-process pipeline,
+// and the cycle dispatcher that drives everything from the phase clock.
 //
-// v2 step 4: convergence wired in. Particles drift on curl noise during
-// DRIFT, converge to logogram targets during GATHER, lock during HOLD,
-// release outward during DISSOLVE, then back to DRIFT. New logogram per
-// cycle. Particle data lives entirely in GPU storage buffers.
+// Cycle: INITIAL_DRIFT → GATHER → HOLD → DISSOLVE → DRIFT → repeat.
+// Each new GATHER picks a fresh logogram seed and dissolve mode; the
+// bell is pre-scheduled in audio time at the moment HOLD will begin
+// (sample-accurate). Particle state lives entirely on the GPU.
 // ────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three/webgpu';
@@ -33,12 +35,11 @@ const CYCLE_LEN = PHASES.GATHER + PHASES.HOLD + PHASES.DISSOLVE + PHASES.DRIFT;
 
 // ── Landing event — coordinated audiovisual moment at GATHER 100% ───
 // The bell, brightness pulse, color punch, and CA spike all converge on
-// this single instant. The convergence motion is naturally smooth, but
-// the audiovisual event creates the *perceived* moment of completion —
-// the "now" the user feels regardless of how the particles read mid-flight.
+// this single instant. The convergence motion is naturally smooth; the
+// audiovisual event creates the *perceived* moment of completion — the
+// "now" the user feels, regardless of mid-flight micro-state.
 const LANDING = {
-  COLOR_LEAD_S: 0.8,    // color tint ramp duration ending at GATHER 100%
-  PULSE_DECAY:  8.0,    // brightness flash exp-decay rate (faster = sharper)
+  PULSE_DECAY: 8.0,    // brightness flash exp-decay rate (higher = sharper)
 };
 
 function phaseAt(t) {
@@ -330,7 +331,6 @@ renderer.setAnimationLoop(async (now) => {
   const landingPulse = Math.max(0, Math.exp(-(elapsed - lastLandingTime) * LANDING.PULSE_DECAY));
 
   caStrength.value = 0.30 + holdGlow * 0.40 + landingPulse * 0.15;
-  particles.setHoldGlow(holdGlow);
   particles.setLandingPulse(landingPulse);
 
   await renderer.computeAsync(particles.cursorUpdateCompute);
