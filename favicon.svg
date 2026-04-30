@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- cathode-archive background -->
+  <rect width="32" height="32" fill="#040810"/>
+  <!-- main ring — slight oval, asymmetric like a logogram -->
+  <ellipse cx="16" cy="16" rx="10" ry="9.5"
+           fill="none" stroke="#A8DCFF" stroke-width="2"
+           stroke-linecap="round"/>
+  <!-- inner sub-ring -->
+  <circle cx="13.5" cy="18" r="3"
+          fill="none" stroke="#A8DCFF" stroke-width="1" opacity="0.75"/>
+  <!-- sodium-orange drip on the outer ring -->
+  <circle cx="23" cy="11" r="2.3" fill="#FF7B1C"/>
+</svg>
