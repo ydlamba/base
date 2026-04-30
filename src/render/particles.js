@@ -190,43 +190,71 @@ export function createParticleSystem({ count = 30000 } = {}) {
       newVel.assign(vec3(0));
       newBlend.assign(float(1));
     }).ElseIf(phaseIdx.equal(int(PHASE.DISSOLVE)), () => {
-      // Front-loaded burst envelope — sharp kick at DISSOLVE start that
-      // fades over the phase. The DIRECTION of the kick depends on which
-      // dissolve mode this cycle rolled, so successive dissolves look
-      // different: radial burst, vortex spin, directional wind, or a
-      // shatter into co-moving clusters.
-      const burst = oneMinus(phaseProgress).mul(oneMinus(phaseProgress));
+      // Per-particle stagger: each particle starts its own burst at a
+      // different moment within the phase (0..0.65 of dissolve), with a
+      // 0.4-wide active window. Spreads release across all 4 seconds so
+      // there's continuous eruption activity instead of one synchronized
+      // whoosh at progress=0 that fades to nothing by 96%.
+      const fiD = float(instanceIndex);
+      const dStart = hash(fiD.mul(0.0297).add(dissolveSeedU.mul(0.013))).mul(0.65);
+      const dSpan  = float(0.40);
+      const cD     = saturate(phaseProgress.sub(dStart).div(dSpan));
+      const burst  = oneMinus(cD).mul(oneMinus(cD));
+
+      // Sparks — ~5% of particles get a much bigger kick. They read as
+      // comets streaking through the dispersing cloud.
+      const sparkSeed  = hash(fiD.mul(0.0911).add(dissolveSeedU.mul(0.07)));
+      const sparkBoost = float(1).add(step(float(0.95), sparkSeed).mul(1.8));
+
       const dissolveForce = vec3(0, 0, 0).toVar();
-      const fi = float(instanceIndex);
 
       If(dissolveMode.equal(int(0)), () => {
-        // Radial burst — push outward from origin.
-        dissolveForce.assign(normalize(pos).mul(burst.mul(3.5)));
+        // Shockwave — radial burst with a position-dependent swirl, so
+        // the wave isn't a clean sphere. Per-particle stagger gives the
+        // wavefront a propagation feel.
+        const radial = normalize(pos);
+        const tan    = normalize(vec3(pos.y.negate(), pos.x, float(0)));
+        const swirl  = sin(length(pos).mul(3.0).add(dissolveSeedU.mul(0.5)));
+        dissolveForce.assign(radial.mul(burst.mul(4.5)).add(tan.mul(burst.mul(swirl).mul(2.2))));
       }).ElseIf(dissolveMode.equal(int(1)), () => {
-        // Vortex — outward + tangential rotation around z-axis.
-        const radial = normalize(pos).mul(burst.mul(2.0));
-        const tangent = vec3(pos.y.negate(), pos.x, float(0));
-        const spin = normalize(tangent).mul(burst.mul(2.8));
-        dissolveForce.assign(radial.add(spin));
+        // Implode-explode — pull inward for first ~30% of the phase, then
+        // a dramatic outward burst. The "winding up before release" gives
+        // the dissolve a clear arc instead of just dispersing.
+        const implodeMask = oneMinus(smoothstep(float(0.20), float(0.32), phaseProgress));
+        const explodeMask = smoothstep(float(0.28), float(0.42), phaseProgress);
+        const explodeEnv  = oneMinus(phaseProgress).mul(oneMinus(phaseProgress));
+        const inward      = normalize(pos).mul(implodeMask).mul(-2.5);
+        const outward     = normalize(pos).mul(explodeEnv.mul(explodeMask).mul(7.5));
+        dissolveForce.assign(inward.add(outward));
       }).ElseIf(dissolveMode.equal(int(2)), () => {
-        // Directional wind — everyone pushed the same way (per-cycle direction).
-        const wx = sin(dissolveSeedU.mul(2.7));
-        const wy = cos(dissolveSeedU.mul(3.1));
-        const wz = sin(dissolveSeedU.mul(1.9)).mul(0.3);
-        const wind = normalize(vec3(wx, wy, wz));
-        dissolveForce.assign(wind.mul(burst.mul(3.5)));
+        // Tear — split along a per-cycle randomized axis. Each half flies
+        // in its assigned direction; perpendicular fan-out makes the two
+        // halves spread like ripped paper, not collapse into two lines.
+        const angle = dissolveSeedU.mul(0.31);
+        const axisX = sin(angle);
+        const axisY = cos(angle);
+        const proj  = pos.x.mul(axisX).add(pos.y.mul(axisY));
+        const sgn   = step(float(0), proj).mul(2).sub(1);
+        const splitDir = vec3(axisX.mul(sgn), axisY.mul(sgn), float(0));
+        const perpProj = pos.x.mul(axisY.negate()).add(pos.y.mul(axisX));
+        const perpSgn  = step(float(0), perpProj).mul(2).sub(1);
+        const fan = vec3(axisY.negate().mul(perpSgn), axisX.mul(perpSgn), float(0));
+        dissolveForce.assign(splitDir.mul(burst.mul(4.0)).add(fan.mul(burst.mul(1.8))));
       }).Else(() => {
-        // Cluster shatter — particles group by instance index (~120 per
-        // cluster at 60k). Each cluster gets a unique direction so chunks
-        // of particles flow as units instead of dispersing as individuals.
-        const clusterId = fi.div(float(120)).floor();
-        const cs = clusterId.mul(0.0731).add(dissolveSeedU.mul(11.3));
+        // Swarm-helical — particles grouped into ~30 swarms at 18k
+        // (~600 each), each flying in its own direction with a tangential
+        // spiral. Reads as chunks of the glyph leaving in formation.
+        const clusterId = fiD.div(float(600)).floor();
+        const cs = clusterId.mul(0.3171).add(dissolveSeedU.mul(0.08));
         const cx = sin(cs.mul(2.7));
         const cy = cos(cs.mul(3.1));
-        const cz = sin(cs.mul(1.9)).mul(0.4);
-        const clusterDir = normalize(vec3(cx, cy, cz));
-        dissolveForce.assign(clusterDir.mul(burst.mul(3.0)));
+        const cz = sin(cs.mul(1.9)).mul(0.5);
+        const dir = normalize(vec3(cx, cy, cz));
+        const tan = normalize(vec3(cy.negate(), cx, float(0)));
+        dissolveForce.assign(dir.mul(burst.mul(3.5)).add(tan.mul(burst.mul(2.0))));
       });
+
+      dissolveForce.assign(dissolveForce.mul(sparkBoost));
 
       // Attraction: same orbit-not-collapse profile as DRIFT.
       const toMouse = mouseWorld.sub(pos);
@@ -236,7 +264,11 @@ export function createParticleSystem({ count = 30000 } = {}) {
       const pull = innerFade.mul(outerFade).mul(attractMask).mul(3.5);
       const attractForce = toMouse.div(dist).mul(pull);
 
-      const force = curlForce.add(thermalForce).add(center).add(dissolveForce).add(attractForce);
+      // Boosted thermal during dissolve — the dispersing field shimmers
+      // instead of flying in clean straight lines.
+      const thermalBoost = thermalForce.mul(1.4);
+
+      const force = curlForce.add(thermalBoost).add(center).add(dissolveForce).add(attractForce);
       const v = vel.mul(0.95).add(force.mul(dtUniform));
       newVel.assign(v);
       newPos.assign(pos.add(v.mul(dtUniform)));

@@ -129,8 +129,9 @@ function regenerate(cycle = 0) {
   particles.uploadTargets(targets);
   bellFreq = PENTATONIC[((cycle % PENTATONIC.length) + PENTATONIC.length) % PENTATONIC.length];
 
-  // Random dissolve mode for this cycle — radial / vortex / wind / cluster.
-  // Each cycle's release looks different so the loop never feels repetitive.
+  // Random dissolve mode for this cycle — shockwave / implode-explode /
+  // tear / swarm-helical. Each cycle's release looks different so the
+  // loop never feels repetitive.
   particles.setDissolveMode(Math.floor(Math.random() * 4), Math.random() * 1000);
 
   // Bell rings exactly at GATHER end (= HOLD start). Convergence math is
