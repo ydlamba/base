@@ -493,6 +493,18 @@ function makeRectangle(rng, cx, cy, w, h, rotation = 0) {
   }, () => thick);
 }
 
+// ── Ring at — closed circle at an arbitrary position ────────────
+// Used by ringless archetypes that want small ring-shaped characters
+// (inscription, cluster) without going through the main-ring machinery.
+function makeRingAt(rng, cx, cy, radius, thickness) {
+  const N = 90;
+  const thick = thickness !== undefined ? thickness : 0.014 + rng() * 0.008;
+  return strokeFromFn(N, (t) => {
+    const a = t * Math.PI * 2;
+    return { x: cx + Math.cos(a) * radius, y: cy + Math.sin(a) * radius };
+  }, () => thick);
+}
+
 // ── Splat — irregular blob (asymmetric disc) ────────────────────
 // Like a drip but with varying radii — reads as paint splash.
 function makeSplat(rng, x, y, baseR) {
@@ -764,14 +776,133 @@ function archSplatter(rng, mainRing, anchors) {
   return els;
 }
 
+// ── Ringless archetypes ─────────────────────────────────────────
+// These don't push a main ring. The composition is held by its own
+// internal logic — a row of characters (inscription), a single sweep
+// (signature), or a centered cluster (cluster).
+
+// Inscription — 3..5 small "characters" arranged on a horizontal
+// baseline. Reads as a line of text in an unknown script.
+function archInscription(rng) {
+  const els = [];
+  const count = 3 + Math.floor(rng() * 3);
+  const spacing = 0.26 + rng() * 0.06;
+  const startX = -((count - 1) * spacing) / 2;
+  const baselineY = (rng() - 0.5) * 0.10;
+
+  for (let i = 0; i < count; i++) {
+    const x = startX + i * spacing;
+    const y = baselineY + (rng() - 0.5) * 0.06;
+    const r = rng();
+
+    if (r < 0.30) {
+      els.push(makeRingAt(rng, x, y, 0.06 + rng() * 0.04));
+    } else if (r < 0.55) {
+      const sides = POLY_SIDES[Math.floor(rng() * POLY_SIDES.length)];
+      els.push(makePolygon(rng, sides, x, y, 0.06 + rng() * 0.03, rng() * Math.PI));
+    } else if (r < 0.75) {
+      els.push({ type: 'disc', center: { x, y }, radius: 0.022 + rng() * 0.020 });
+    } else if (r < 0.90) {
+      els.push(makeAccent(rng, x, y, 0.08 + rng() * 0.03, rng() * Math.PI * 2));
+    } else {
+      // Stacked dots (vertical column) — like a colon glyph
+      els.push({ type: 'disc', center: { x, y: y - 0.04 }, radius: 0.014 });
+      els.push({ type: 'disc', center: { x, y: y + 0.04 }, radius: 0.014 });
+    }
+  }
+  return els;
+}
+
+// Signature — one sweeping calligraphic stroke from lower-left to
+// upper-right (or mirrored), with a couple of accent dots along it.
+// Reads as a deliberate gesture, the trace of a hand.
+function archSignature(rng) {
+  const els = [];
+  const N = 200;
+  const flip = rng() < 0.5 ? 1 : -1;
+  const startX = -0.55 + (rng() - 0.5) * 0.15;
+  const startY = -0.30 * flip + (rng() - 0.5) * 0.15;
+  const endX   = 0.55 + (rng() - 0.5) * 0.15;
+  const endY   = 0.30 * flip + (rng() - 0.5) * 0.15;
+  const cp1 = { x: startX + 0.30, y: startY + flip * (0.40 + rng() * 0.25) };
+  const cp2 = { x: endX - 0.30,   y: endY - flip * (0.40 + rng() * 0.25) };
+
+  const stroke = strokeFromFn(N, (t) => {
+    const u = 1 - t;
+    return {
+      x: u*u*u*startX + 3*u*u*t*cp1.x + 3*u*t*t*cp2.x + t*t*t*endX,
+      y: u*u*u*startY + 3*u*u*t*cp1.y + 3*u*t*t*cp2.y + t*t*t*endY,
+    };
+  }, (t) => {
+    // Calligraphic taper — thin at ends, thick in the belly.
+    const taper = Math.sin(t * Math.PI);
+    return 0.020 + taper * taper * 0.050;
+  });
+  els.push(stroke);
+
+  // Accent dots sampled at points along the stroke
+  const accentCount = 1 + Math.floor(rng() * 2);
+  for (let i = 0; i < accentCount; i++) {
+    const t = 0.20 + rng() * 0.60;
+    const u = 1 - t;
+    const x = u*u*u*startX + 3*u*u*t*cp1.x + 3*u*t*t*cp2.x + t*t*t*endX;
+    const y = u*u*u*startY + 3*u*u*t*cp1.y + 3*u*t*t*cp2.y + t*t*t*endY;
+    els.push({ type: 'disc', center: { x, y }, radius: 0.020 + rng() * 0.014 });
+  }
+  return els;
+}
+
+// Cluster — a centered shape surrounded by a constellation of small
+// marks. No outer frame; the proximity of the marks holds the
+// composition together.
+function archCluster(rng) {
+  const els = [];
+
+  // Central anchor: small polygon or inner ring
+  if (rng() < 0.50) {
+    const sides = POLY_SIDES[Math.floor(rng() * POLY_SIDES.length)];
+    els.push(makePolygon(rng, sides, 0, 0, 0.16 + rng() * 0.10, rng() * Math.PI * 2));
+  } else {
+    els.push(makeRingAt(rng, 0, 0, 0.16 + rng() * 0.10));
+  }
+  els.push(makeEyelet(rng, 0, 0));
+
+  // Surrounding constellation
+  const count = 5 + Math.floor(rng() * 4);
+  const offset = rng() * Math.PI * 2;
+  for (let i = 0; i < count; i++) {
+    const a = offset + (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.25;
+    const r = 0.32 + rng() * 0.18;
+    const cx = Math.cos(a) * r;
+    const cy = Math.sin(a) * r;
+    const c = rng();
+    if (c < 0.45) {
+      els.push({ type: 'disc', center: { x: cx, y: cy }, radius: 0.016 + rng() * 0.014 });
+    } else if (c < 0.75) {
+      els.push(makeRingAt(rng, cx, cy, 0.05 + rng() * 0.03));
+    } else {
+      els.push(makeAccent(rng, cx, cy, 0.06 + rng() * 0.03, rng() * Math.PI * 2));
+    }
+  }
+  return els;
+}
+
 // ── Main generator ──────────────────────────────────────────────
 
 const ARCHETYPES = [
+  // Framed (use the main ring as the outer boundary)
   archSolidEye, archCradled, archSpokeArray,
   archMessenger, archPulse, archEcho,
   archConstellation, archHalo, archHooks, archSplatter,
   archGeometric,
+  // Ringless (no outer frame; composition holds itself together)
+  archInscription, archSignature, archCluster,
 ];
+
+// Archetypes that do not want a visible main ring. The ring is still
+// computed so existing geometry helpers (anchors, ringAt) work, but
+// it doesn't get rendered.
+const RINGLESS = new Set([archInscription, archSignature, archCluster]);
 
 export function generateLogogram(seed) {
   const rng = makeRng(seed);
@@ -787,14 +918,19 @@ export function generateLogogram(seed) {
   else if (moodRoll < 0.92) thickScale = 1.35; // bold
   else                      thickScale = 1.7;  // shouting
 
-  // Hero — main ring. ~25% chance of a broken/open ring for variety.
-  const broken = rng() < 0.25;
-  const mainRing = makeMainRing(rng, { broken, thickScale });
-  elements.push(mainRing);
+  // Pick the archetype first — its identity decides whether the glyph
+  // gets a visible main ring or carries itself without one.
+  const archetype = ARCHETYPES[Math.floor(rng() * ARCHETYPES.length)];
+  const ringless = RINGLESS.has(archetype);
 
-  // ~20% chance of a thin halo outside the main ring (concentric framing)
-  if (!broken && rng() < 0.20) {
-    elements.push(makeHalo(rng));
+  // Main ring — always computed (archetypes use its geometry for anchor
+  // positions even when invisible), but only pushed for framed glyphs.
+  const broken = !ringless && rng() < 0.25;
+  const mainRing = makeMainRing(rng, { broken, thickScale });
+  if (!ringless) {
+    elements.push(mainRing);
+    // ~20% chance of a thin halo outside the main ring
+    if (!broken && rng() < 0.20) elements.push(makeHalo(rng));
   }
 
   // Anchor grid — denser than before so archetypes have flexible attachment.
@@ -804,26 +940,25 @@ export function generateLogogram(seed) {
   const anchors = [];
   for (let i = 0; i < numAnchors; i++) anchors.push(anchorOffset + i * anchorStep);
 
-  // Pick one archetype — the glyph commits to a single grammatical pattern.
-  const archetype = ARCHETYPES[Math.floor(rng() * ARCHETYPES.length)];
   const supports = archetype(rng, mainRing, anchors);
   for (const el of supports) elements.push(el);
 
-  // ── Dressing pass — every glyph gets 2-4 decorative marks regardless
-  // of archetype, so no glyph reads as bare. These are small, scattered,
-  // and asymmetric — they add visual rhythm without competing with the
-  // primary structure.
+  // ── Dressing pass — small decorative marks layered on top of the
+  // archetype, so no glyph reads as bare. Ring-edge dressing only fires
+  // for framed glyphs; interior dots fire for everyone.
 
-  // Edge ticks — short marks along the ring at random anchors
-  const tickCount = 1 + Math.floor(rng() * 3); // 1..3
-  for (let i = 0; i < tickCount; i++) {
-    const a = anchors[(i * 2 + 1) % anchors.length] + (rng() - 0.5) * 0.30;
-    const rp = ringAt(mainRing, a);
-    const tan = ringTangent(mainRing, a);
-    elements.push(makeTick(rng, rp.x + tan.x * 0.04, rp.y + tan.y * 0.04, a, 0.05 + rng() * 0.04));
+  // Edge ticks — only for framed glyphs (ringless ones have no ring edge)
+  if (!ringless) {
+    const tickCount = 1 + Math.floor(rng() * 3); // 1..3
+    for (let i = 0; i < tickCount; i++) {
+      const a = anchors[(i * 2 + 1) % anchors.length] + (rng() - 0.5) * 0.30;
+      const rp = ringAt(mainRing, a);
+      const tan = ringTangent(mainRing, a);
+      elements.push(makeTick(rng, rp.x + tan.x * 0.04, rp.y + tan.y * 0.04, a, 0.05 + rng() * 0.04));
+    }
   }
 
-  // Tiny dots scattered between the main ring and centre — like punctuation
+  // Tiny dots scattered through the interior — punctuation. Always.
   if (rng() < 0.85) {
     const dotCount = 2 + Math.floor(rng() * 4); // 2..5
     for (let i = 0; i < dotCount; i++) {
@@ -837,8 +972,8 @@ export function generateLogogram(seed) {
     }
   }
 
-  // 50% chance of an outer accent (small splat or tick beyond ring)
-  if (rng() < 0.50) {
+  // Outer accent beyond the ring — only for framed glyphs.
+  if (!ringless && rng() < 0.50) {
     const a = anchors[Math.floor(rng() * anchors.length)];
     const r = RING_R0 * (1.10 + rng() * 0.15);
     if (rng() < 0.5) {

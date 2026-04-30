@@ -94,7 +94,7 @@ const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
 camera.position.set(0, 0, 2.2);
 
 // ── Particle system ─────────────────────────────────────────────
-const particles = createParticleSystem({ count: 60000 });
+const particles = createParticleSystem({ count: 18000 });
 scene.add(particles.mesh);
 scene.add(particles.cursorMesh);
 await renderer.computeAsync(particles.initCompute);
