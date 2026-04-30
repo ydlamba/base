@@ -541,3 +541,347 @@ export function feather(rng) {
   }
   return els;
 }
+
+// ── Animals & nature ───────────────────────────────────────────
+
+export function snake(rng) {
+  const els = [];
+  // Sinuous body — sine wave along x.
+  els.push(sineWave(0.18, 0.40, 0.78, 0.022, 0));
+  // Head bulb at the right end.
+  els.push(disc(0.40, 0, 0.040));
+  // Eye dot.
+  els.push(disc(0.43, 0.015, 0.012));
+  // Forked tongue.
+  els.push(strokeLine(0.43, 0, 0.52, 0.04, 0.012));
+  els.push(strokeLine(0.43, 0, 0.52, -0.04, 0.012));
+  return els;
+}
+
+export function leaf(rng) {
+  const els = [];
+  // Almond outline (drawn upright; the glyph rotates the whole thing).
+  els.push(strokeQuad(-0.40, 0, 0,  0.16, 0.40, 0, 0.020));
+  els.push(strokeQuad(-0.40, 0, 0, -0.16, 0.40, 0, 0.020));
+  // Central spine.
+  els.push(strokeLine(-0.36, 0, 0.36, 0, 0.014));
+  // Side veins.
+  for (let i = 0; i < 3; i++) {
+    const x = -0.20 + i * 0.20;
+    els.push(strokeLine(x, 0, x + 0.08,  0.10, 0.012));
+    els.push(strokeLine(x, 0, x + 0.08, -0.10, 0.012));
+  }
+  // Rotate the whole leaf so it doesn't always lay flat.
+  const tilt = -0.4 + rng() * 0.4;
+  const cs = Math.cos(tilt), sn = Math.sin(tilt);
+  for (const el of els) {
+    if (el.type === 'disc') {
+      const p = el.center;
+      el.center = { x: p.x * cs - p.y * sn, y: p.x * sn + p.y * cs };
+    } else {
+      el.points = el.points.map(p => ({ x: p.x * cs - p.y * sn, y: p.x * sn + p.y * cs }));
+    }
+  }
+  return els;
+}
+
+export function mushroom(rng) {
+  const els = [];
+  // Cap dome.
+  els.push(strokeArc(0, 0.10, 0.30, 0, Math.PI, 0.024));
+  els.push(strokeLine(-0.30, 0.10, 0.30, 0.10, 0.022));
+  // Stem.
+  els.push(strokePolyline([
+    { x: -0.09, y:  0.08 },
+    { x:  0.09, y:  0.08 },
+    { x:  0.09, y: -0.30 },
+    { x: -0.09, y: -0.30 },
+    { x: -0.09, y:  0.08 },
+  ], 0.020));
+  // Spots on the cap.
+  const N = 3 + Math.floor(rng() * 2);
+  for (let i = 0; i < N; i++) {
+    const a = Math.PI * 0.20 + (i / (N - 1 || 1)) * Math.PI * 0.60;
+    const r = 0.10 + rng() * 0.12;
+    els.push(disc(Math.cos(a) * r, 0.10 + Math.sin(a) * r, 0.018));
+  }
+  return els;
+}
+
+export function owl(rng) {
+  const els = [];
+  els.push(ring(0.32, 0.022));
+  // Ear tufts.
+  els.push(strokePolyline([
+    { x: -0.20, y: 0.28 },
+    { x: -0.16, y: 0.42 },
+    { x: -0.10, y: 0.30 },
+  ], 0.018));
+  els.push(strokePolyline([
+    { x:  0.20, y: 0.28 },
+    { x:  0.16, y: 0.42 },
+    { x:  0.10, y: 0.30 },
+  ], 0.018));
+  // Eye rings + pupils.
+  els.push(strokeFromFn(40,
+    (t) => {
+      const a = t * Math.PI * 2;
+      return { x: -0.12 + Math.cos(a) * 0.08, y: 0.05 + Math.sin(a) * 0.08 };
+    },
+    () => 0.018,
+  ));
+  els.push(strokeFromFn(40,
+    (t) => {
+      const a = t * Math.PI * 2;
+      return { x: 0.12 + Math.cos(a) * 0.08, y: 0.05 + Math.sin(a) * 0.08 };
+    },
+    () => 0.018,
+  ));
+  els.push(disc(-0.12, 0.05, 0.026));
+  els.push(disc( 0.12, 0.05, 0.026));
+  // Beak triangle.
+  els.push(strokePolyline([
+    { x: -0.04, y: -0.05 },
+    { x:  0.04, y: -0.05 },
+    { x:  0.00, y: -0.14 },
+    { x: -0.04, y: -0.05 },
+  ], 0.014));
+  return els;
+}
+
+export function cloud(rng) {
+  const els = [];
+  // Three overlapping arcs forming the cloud top.
+  els.push(strokeArc(-0.18, 0.05, 0.16, Math.PI * 0.40, Math.PI * 1.60, 0.022));
+  els.push(strokeArc( 0.00, 0.15, 0.20, Math.PI * 0.00, Math.PI * 1.00, 0.022));
+  els.push(strokeArc( 0.20, 0.05, 0.18, Math.PI * 0.50, Math.PI * 2.00, 0.022));
+  // Underside.
+  els.push(strokeQuad(-0.30, -0.05, 0, -0.10, 0.36, -0.05, 0.022));
+  // Optional rain.
+  if (rng() < 0.5) {
+    for (let i = 0; i < 4; i++) {
+      const x = -0.18 + i * 0.12;
+      els.push(strokeLine(x, -0.18, x - 0.04, -0.32, 0.012));
+    }
+  }
+  return els;
+}
+
+export function wave(rng) {
+  const els = [];
+  // Single breaking wave — rising arc with a curl.
+  els.push(strokeQuad(-0.45, -0.10, -0.20,  0.30,  0.10, 0.20, 0.024));
+  els.push(strokeQuad( 0.10,  0.20,  0.30,  0.10,  0.40, -0.10, 0.024));
+  // Foam dots on the crest.
+  for (let i = 0; i < 3; i++) {
+    const x = -0.10 + i * 0.13;
+    els.push(disc(x, 0.20 + Math.sin(i * 1.7) * 0.04, 0.018));
+  }
+  // Water surface.
+  els.push(strokeLine(-0.45, -0.32, 0.45, -0.32, 0.014));
+  return els;
+}
+
+export function lotus(rng) {
+  const els = [];
+  const N = 7;
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2 - Math.PI / 2;
+    const tipX = Math.cos(a) * 0.42, tipY = Math.sin(a) * 0.42;
+    // Petal — two curves meeting at tip.
+    els.push(strokeQuad(0, 0, Math.cos(a - 0.18) * 0.30, Math.sin(a - 0.18) * 0.30, tipX, tipY, 0.018));
+    els.push(strokeQuad(0, 0, Math.cos(a + 0.18) * 0.30, Math.sin(a + 0.18) * 0.30, tipX, tipY, 0.018));
+  }
+  els.push(disc(0, 0, 0.05));
+  return els;
+}
+
+// ── Time, balance, structure ───────────────────────────────────
+
+export function hourglass(rng) {
+  const els = [];
+  // Two triangles tip-to-tip.
+  els.push(strokePolyline([
+    { x: -0.22, y: 0.40 },
+    { x:  0.22, y: 0.40 },
+    { x:  0,    y: 0    },
+    { x: -0.22, y: 0.40 },
+  ], 0.022));
+  els.push(strokePolyline([
+    { x: -0.22, y: -0.40 },
+    { x:  0.22, y: -0.40 },
+    { x:  0,    y:  0    },
+    { x: -0.22, y: -0.40 },
+  ], 0.022));
+  // Top and bottom rims.
+  els.push(strokeLine(-0.30,  0.42, 0.30,  0.42, 0.020));
+  els.push(strokeLine(-0.30, -0.42, 0.30, -0.42, 0.020));
+  // Sand falling through the neck.
+  els.push(disc(0, -0.10, 0.030));
+  els.push(disc(0, -0.20, 0.024));
+  els.push(disc(0, -0.30, 0.020));
+  return els;
+}
+
+export function scales(rng) {
+  const els = [];
+  // Central pillar.
+  els.push(strokeLine(0, -0.40, 0, 0.30, 0.022));
+  // Crossbeam.
+  els.push(strokeLine(-0.30, 0.30, 0.30, 0.30, 0.020));
+  // Hanging strings.
+  els.push(strokeLine(-0.30, 0.30, -0.30, 0.10, 0.014));
+  els.push(strokeLine( 0.30, 0.30,  0.30, 0.10, 0.014));
+  // Plates — half discs.
+  els.push(strokeArc(-0.30, 0.10, 0.10, Math.PI, Math.PI * 2, 0.020));
+  els.push(strokeArc( 0.30, 0.10, 0.10, Math.PI, Math.PI * 2, 0.020));
+  // Base.
+  els.push(strokeLine(-0.10, -0.40, 0.10, -0.40, 0.022));
+  return els;
+}
+
+export function ladder(rng) {
+  const els = [];
+  // Rails.
+  els.push(strokeLine(-0.15, -0.45, -0.15, 0.45, 0.020));
+  els.push(strokeLine( 0.15, -0.45,  0.15, 0.45, 0.020));
+  // Rungs.
+  const N = 5 + Math.floor(rng() * 3);
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1);
+    const y = -0.40 + t * 0.80;
+    els.push(strokeLine(-0.15, y, 0.15, y, 0.018));
+  }
+  return els;
+}
+
+// ── Mystical extensions ────────────────────────────────────────
+
+export function yinyang(rng) {
+  const els = [];
+  const r = 0.32;
+  els.push(ring(r, 0.022));
+  // S-curve: top bulges right, bottom bulges left.
+  els.push(strokeArc(0,  r / 2, r / 2,  Math.PI / 2, -Math.PI / 2, 0.022));
+  els.push(strokeArc(0, -r / 2, r / 2,  Math.PI / 2,  Math.PI * 1.5, 0.022));
+  // Two small dots — one in each fish.
+  els.push(disc(0,  r / 2, 0.024));
+  els.push(disc(0, -r / 2, 0.024));
+  return els;
+}
+
+export function mandala(rng) {
+  const els = [];
+  const N = 8;
+  els.push(ring(0.42, 0.020));
+  els.push(ring(0.20, 0.016));
+  els.push(disc(0, 0, 0.05));
+  // Petals on the inner ring.
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const cx = Math.cos(a) * 0.30, cy = Math.sin(a) * 0.30;
+    els.push(strokeFromFn(30,
+      (t) => {
+        const ang = t * Math.PI * 2;
+        const px  = Math.cos(ang) * 0.06;
+        const py  = Math.sin(ang) * 0.10;
+        const cs  = Math.cos(a + Math.PI / 2), sn = Math.sin(a + Math.PI / 2);
+        return { x: cx + px * cs - py * sn, y: cy + px * sn + py * cs };
+      },
+      () => 0.014,
+    ));
+  }
+  // Spokes between petals out to the outer ring.
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2 + Math.PI / N;
+    els.push(strokeLine(
+      Math.cos(a) * 0.20, Math.sin(a) * 0.20,
+      Math.cos(a) * 0.42, Math.sin(a) * 0.42,
+      0.012,
+    ));
+  }
+  return els;
+}
+
+export function eyeOfHorus(rng) {
+  const els = [];
+  // Eye body.
+  els.push(strokeQuad(-0.35, 0, 0,  0.12, 0.30, 0, 0.022));
+  els.push(strokeQuad(-0.35, 0, 0, -0.12, 0.30, 0, 0.022));
+  els.push(disc(0, 0, 0.060));
+  // Tail: horizontal sweep then curl downward.
+  els.push(strokeQuad(0.28, 0, 0.40, -0.10, 0.50, -0.20, 0.020));
+  els.push(strokeArc(0.45, -0.25, 0.08, 0, Math.PI, 0.020));
+  // Cheek mark (drop below eye).
+  els.push(strokeQuad(-0.10, -0.04, -0.10, -0.20, -0.05, -0.32, 0.018));
+  return els;
+}
+
+export function peace(rng) {
+  const els = [];
+  els.push(ring(0.32, 0.022));
+  els.push(strokeLine(0, -0.32, 0, 0.32, 0.022));
+  els.push(strokeLine(0, 0, -0.22, -0.22, 0.022));
+  els.push(strokeLine(0, 0,  0.22, -0.22, 0.022));
+  return els;
+}
+
+export function atom(rng) {
+  const els = [];
+  for (let i = 0; i < 3; i++) {
+    els.push(ellipse(0.36, 0.14, 0.018, i * Math.PI / 3));
+  }
+  els.push(disc(0, 0, 0.05));
+  // Three small electron discs along the orbits.
+  for (let i = 0; i < 3; i++) {
+    const a = i * Math.PI / 3;
+    const t = rng() * Math.PI * 2;
+    const cs = Math.cos(a), sn = Math.sin(a);
+    const x0 = Math.cos(t) * 0.36, y0 = Math.sin(t) * 0.14;
+    els.push(disc(x0 * cs - y0 * sn, x0 * sn + y0 * cs, 0.022));
+  }
+  return els;
+}
+
+// ── Sharp & broken ─────────────────────────────────────────────
+
+export function dagger(rng) {
+  const els = [];
+  // Blade.
+  els.push(strokePolyline([
+    { x:  0.00, y:  0.50 },
+    { x:  0.06, y:  0.05 },
+    { x: -0.06, y:  0.05 },
+    { x:  0.00, y:  0.50 },
+  ], 0.020));
+  // Crossguard.
+  els.push(strokeLine(-0.18, 0.05, 0.18, 0.05, 0.024));
+  // Hilt.
+  els.push(strokeLine(0, 0.05, 0, -0.20, 0.022));
+  // Pommel.
+  els.push(disc(0, -0.25, 0.045));
+  return els;
+}
+
+export function brokenForm(rng) {
+  const els = [];
+  const r = 0.34;
+  const N = 4;
+  // Broken arc segments around a circle.
+  for (let i = 0; i < N; i++) {
+    const a1 = (i / N) * Math.PI * 2;
+    const a2 = a1 + (Math.PI * 2 / N) * (0.55 + rng() * 0.25);
+    els.push(strokeArc(0, 0, r, a1, a2, 0.022));
+  }
+  // Cracks radiating from the centre.
+  const cracks = 3;
+  for (let i = 0; i < cracks; i++) {
+    const a = rng() * Math.PI * 2;
+    els.push(strokeLine(
+      Math.cos(a) * 0.18, Math.sin(a) * 0.18,
+      Math.cos(a) * (r + 0.06), Math.sin(a) * (r + 0.06),
+      0.014,
+    ));
+  }
+  return els;
+}
