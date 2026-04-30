@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>lamba.sh</title>
+  <!-- Umami analytics — privacy-friendly, no cookies -->
+  <script defer src="https://cloud.umami.is/script.js" data-website-id="0bdf3b08-df50-41ec-a686-0e83897d178d"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #040810;             /* cathode archive — deep blue-black */
+      color: #E8ECF0;                   /* luminescent off-white */
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      cursor: none;
+    }
+    canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: none; }
+
+    /* Bottom-right placeholder note — always visible, low contrast */
+    #note {
+      position: fixed;
+      right: 1.5rem;
+      bottom: 1.25rem;
+      color: rgba(232, 236, 240, 0.45);
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      font-style: italic;
+      pointer-events: none;
+      user-select: none;
+      z-index: 10;
+    }
+
+    /* Audio hint — top-left, fades out when audio unlocks */
+    #audio-hint {
+      position: fixed;
+      left: 1.5rem;
+      top: 1.25rem;
+      color: rgba(232, 236, 240, 0.45);
+      font-size: 0.70rem;
+      letter-spacing: 0.06em;
+      pointer-events: none;
+      user-select: none;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.9s ease;
+    }
+    #audio-hint.show { opacity: 1; }
+    #audio-hint.hide { opacity: 0; }
+
+    /* Idle cursor hint — bottom-center, shows whenever the user goes idle */
+    #idle-hint {
+      position: fixed;
+      left: 50%;
+      bottom: 1.25rem;
+      transform: translateX(-50%);
+      color: rgba(232, 236, 240, 0.60);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      pointer-events: none;
+      user-select: none;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.9s ease;
+    }
+    #idle-hint.show { opacity: 1; }
+    #idle-hint.hide { opacity: 0; }
+
+    /* GitHub link — bottom-left. The clickable hit-area is 48×48
+       (transparent padding) while the visible icon stays 20×20 — much
+       easier to hit on fast diagonal moves toward the corner. Cursor
+       stays hidden over the link too. */
+    #gh {
+      position: fixed;
+      left: 0.5rem;
+      bottom: 0.25rem;
+      width: 48px; height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(232, 236, 240, 0.45);
+      transform-origin: center;
+      transition: color 0.35s ease, transform 0.35s ease;
+      z-index: 10;
+      cursor: none;            /* override UA default (a → pointer) */
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #gh:hover { color: rgba(232, 236, 240, 0.92); transform: scale(1.18); }
+    #gh.clicking {
+      color: #FFFFFF;
+      transform: scale(1.45);
+      transition: color 0.18s ease, transform 0.20s ease;
+    }
+    #gh svg { width: 20px; height: 20px; fill: currentColor; display: block; cursor: none; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="note">the message hasn't arrived yet</div>
+  <div id="audio-hint">tap anywhere for sound</div>
+  <div id="idle-hint">move your cursor</div>
+  <a id="gh" href="https://github.com/ydlamba/base" target="_blank" rel="noopener noreferrer" aria-label="View source on GitHub">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55 0-.27-.01-1.16-.02-2.1-3.2.7-3.87-1.36-3.87-1.36-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.53-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18.91-.25 1.89-.38 2.86-.38.97 0 1.95.13 2.86.38 2.18-1.49 3.14-1.18 3.14-1.18.62 1.59.23 2.76.11 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.7 5.41-5.27 5.69.41.36.78 1.07.78 2.16 0 1.56-.01 2.81-.01 3.19 0 .31.21.66.79.55C20.71 21.39 24 17.07 24 12 24 5.65 18.85.5 12 .5z"/>
+    </svg>
+  </a>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
