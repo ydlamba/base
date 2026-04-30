@@ -122,6 +122,11 @@ pipeline.outputNode = aberrated.add(bloomPass);
 const PENTATONIC = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33];
 let prevCycle = -2;
 let bellFreq = PENTATONIC[0];
+// The current cycle's audio context — captured at GATHER start so the
+// brush/hold/dissolve calls fired from the frame loop on phase change
+// can voice the right mood without re-reading the logogram.
+let cycleMood = 'calm';
+let cyclePattern = 'single';
 function regenerate(cycle = 0) {
   const seed = (Math.random() * 1e9) | 0;
   const logogram = generateLogogram(seed);
@@ -129,17 +134,29 @@ function regenerate(cycle = 0) {
   particles.uploadTargets(targets);
   bellFreq = PENTATONIC[((cycle % PENTATONIC.length) + PENTATONIC.length) % PENTATONIC.length];
 
+  cycleMood = logogram.mood;
+  cyclePattern = logogram.pattern;
+  const elementCount = logogram.elements.length;
+  // Density scales the bell volume — sparse messages whisper, rich
+  // ones speak with more weight. Element count is a good proxy.
+  const density = Math.min(1.2, 0.55 + elementCount / 60);
+
   // Random dissolve mode for this cycle — shockwave / implode-explode /
   // tear / swarm-helical. Each cycle's release looks different so the
   // loop never feels repetitive.
   particles.setDissolveMode(Math.floor(Math.random() * 4), Math.random() * 1000);
 
   // Bell rings exactly at GATHER end (= HOLD start). Convergence math is
-  // now variable-duration so all particles land at phaseProgress=1.0 —
-  // the bell coincides with the visual completion, sample-accurate.
+  // variable-duration so all particles land at phaseProgress=1.0 — the
+  // cascade coincides with the visual completion, sample-accurate.
+  // Pattern picks the cascade shape (single / triplet / constellation /
+  // cartouche / mirror); mood picks the bell's harmonic colour.
+  // Stroke ticks fire one quiet pen-tap per glyph element across GATHER,
+  // so the message has a writing rhythm as it forms.
   if (Audio.isStarted() && !reducedMotion) {
     const startAudio = Audio.getTime();
-    Audio.bell(startAudio + PHASES.GATHER, bellFreq);
+    Audio.bellCascade(startAudio + PHASES.GATHER, bellFreq, cyclePattern, cycleMood, density);
+    Audio.strokeTicks(startAudio + 0.10, PHASES.GATHER, elementCount, bellFreq, cycleMood);
   }
   return seed;
 }
@@ -288,11 +305,11 @@ renderer.setAnimationLoop(async (now) => {
     if (Audio.isStarted() && !reducedMotion) {
       const at = Audio.getTime();
       if (phase.idx === PHASE.GATHER && prevPhaseIdx !== PHASE.GATHER) {
-        Audio.brushSound(at + 0.02, PHASES.GATHER, 600, 1800, 0.062);
+        Audio.brushSound(at + 0.02, PHASES.GATHER, 600, 1800, 0.062, cycleMood);
       } else if (phase.idx === PHASE.HOLD && prevPhaseIdx !== PHASE.HOLD) {
-        Audio.startHoldTone(bellFreq * 0.5);
+        Audio.startHoldTone(bellFreq * 0.5, cycleMood);
       } else if (phase.idx === PHASE.DISSOLVE && prevPhaseIdx !== PHASE.DISSOLVE) {
-        Audio.brushSound(at + 0.02, PHASES.DISSOLVE, 1500, 450, 0.052);
+        Audio.brushSound(at + 0.02, PHASES.DISSOLVE, 1500, 450, 0.052, cycleMood);
         Audio.stopHoldTone();
       }
     }
