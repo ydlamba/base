@@ -100,8 +100,10 @@ export function buildTargets(character, total) {
         const tan   = tangentStroke(el.points, tStroke);
         const nx = -tan.y, ny = tan.x;
         const thick = sampleThickness(el.thickness, tStroke);
-        // SHARP centerline: sign-preserved square jitter, tight scaling.
-        const j = sharpJitter() * thick * 0.42;
+        // SHARP centerline: sign-preserved square jitter. Tighter scaling
+        // (0.32 of stroke thickness) — particles concentrate near the
+        // centerline so the ink reads as committed, not feathered.
+        const j = sharpJitter() * thick * 0.32;
         const z = (Math.random() - 0.5) * 0.05;
         const globalT = sT + tStroke * fT;
         targets[pi++] = { x: point.x + nx * j, y: point.y + ny * j, z, globalT };

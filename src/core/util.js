@@ -28,9 +28,18 @@ export function sharpJitter() {
 }
 
 // ── Procedural noise ─────────────────────────────────────────────
+// Integer hash. noise3 only ever calls this with integer coords, so we
+// avoid Math.sin entirely — the sin-based `frac(sin(dot))` hash was eating
+// >50% of CPU at 14k particles × 6 noise calls × 8 corners per frame.
+// Math.imul keeps multiplications in signed-32-bit (no double promotion),
+// and the final shift+mix gives a well-distributed [0, 1) float.
 function hash3(x, y, z) {
-  const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
-  return h - Math.floor(h);
+  let h = Math.imul(x | 0, 73856093)
+        ^ Math.imul(y | 0, 19349663)
+        ^ Math.imul(z | 0, 83492791);
+  h = Math.imul(h ^ (h >>> 13), 0x5bd1e995);
+  h = h ^ (h >>> 15);
+  return (h >>> 0) / 4294967296;
 }
 function noise3(x, y, z) {
   const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
