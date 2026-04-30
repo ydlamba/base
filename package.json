@@ -1,0 +1,14 @@
+{
+  "name": "lamba.sh",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot index.html",
+    "build": "bun build ./index.html --outdir ./dist --target browser --minify",
+    "serve": "bun --port 8000 ./dist"
+  },
+  "dependencies": {
+    "three": "^0.184.0"
+  }
+}
