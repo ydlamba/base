@@ -216,6 +216,53 @@ export function createParticleSystem({ count = 30000 } = {}) {
     const impulseForce = normalize(impulseDir.mul(0.55).add(impulseTan.mul(0.28)).add(impulseJitter.mul(1.15)))
       .mul(impulseEnv.mul(20.0));
 
+    // Field ecology — stable particle "species" that make the idle
+    // state feel structured instead of a uniform dust cloud.
+    const species = hash(fi.mul(0.0047));
+    const threadMask = step(float(0.52), species).mul(oneMinus(step(float(0.72), species)));
+    const knotMask   = step(float(0.72), species).mul(oneMinus(step(float(0.88), species)));
+    const sheetMask  = step(float(0.88), species);
+
+    // Threads: particles gently constrained to invisible 3D filament
+    // axes, with slow flow along the strand.
+    const threadId = fi.div(float(700)).floor();
+    const threadAxis = normalize(vec3(
+      sin(threadId.mul(1.73).add(0.4)),
+      cos(threadId.mul(2.11).add(1.1)),
+      sin(threadId.mul(2.89).add(2.0)).mul(0.75),
+    ));
+    const threadOffset = vec3(
+      sin(threadId.mul(0.71)).mul(0.85),
+      cos(threadId.mul(0.93)).mul(0.65),
+      sin(threadId.mul(1.17)).mul(0.55),
+    );
+    const threadRel = pos.sub(threadOffset);
+    const threadProj = threadOffset.add(threadAxis.mul(threadRel.dot(threadAxis)));
+    const threadFlow = threadAxis.mul(sin(uTime.mul(0.25).add(threadId)).mul(0.12));
+    const threadForce = threadProj.sub(pos).mul(0.20).add(threadFlow).mul(threadMask);
+
+    // Knots: small local clusters orbit invisible anchors as units.
+    const knotId = fi.div(float(260)).floor();
+    const knotCenter = vec3(
+      sin(knotId.mul(2.31).add(uTime.mul(0.09))).mul(1.35),
+      cos(knotId.mul(1.87).add(uTime.mul(0.11))).mul(1.05),
+      sin(knotId.mul(2.73).add(uTime.mul(0.07))).mul(0.95),
+    );
+    const toKnot = knotCenter.sub(pos);
+    const knotTan = normalize(vec3(toKnot.y.negate(), toKnot.x, toKnot.z.mul(0.25)));
+    const knotForce = toKnot.mul(0.18).add(knotTan.mul(0.20)).mul(knotMask);
+
+    // Sheets: faint torn membranes, with z-depth waves so the field
+    // reads as volume instead of a flat screen-space layer.
+    const sheetZ = sin(pos.x.mul(1.15).add(pos.y.mul(0.75)).add(uTime.mul(0.22))).mul(0.55);
+    const sheetForce = vec3(
+      sin(pos.y.mul(1.6).add(uTime.mul(0.18))).mul(0.045),
+      cos(pos.x.mul(1.4).add(uTime.mul(0.16))).mul(0.045),
+      sheetZ.sub(pos.z).mul(0.18),
+    ).mul(sheetMask);
+
+    const ecologyForce = threadForce.add(knotForce).add(sheetForce);
+
     // Very soft centering — barely a tug, just enough to keep the field
     // on screen over long sessions.
     const center = pos.mul(-0.025);
@@ -244,7 +291,7 @@ export function createParticleSystem({ count = 30000 } = {}) {
       const pull = innerFade.mul(outerFade).mul(attractMask).mul(cursorPullScale).mul(0.45);
       const attractForce = toMouse.div(dist).mul(pull).mul(cursorPolarity);
 
-      const force = curlForce.add(thermalForce).add(center).add(attractForce).add(impulseForce.mul(0.55));
+      const force = curlForce.add(thermalForce).add(center).add(attractForce).add(impulseForce.mul(0.55)).add(ecologyForce.mul(0.18));
       const driftedVel = vel.mul(0.93).add(force.mul(dtUniform));
       const driftedPos = pos.add(driftedVel.mul(dtUniform));
 
@@ -336,7 +383,7 @@ export function createParticleSystem({ count = 30000 } = {}) {
       // instead of flying in clean straight lines.
       const thermalBoost = thermalForce.mul(1.4);
 
-      const force = curlForce.add(thermalBoost).add(center).add(dissolveForce).add(attractForce).add(impulseForce);
+      const force = curlForce.add(thermalBoost).add(center).add(dissolveForce).add(attractForce).add(impulseForce).add(ecologyForce.mul(0.45));
       const v = vel.mul(0.95).add(force.mul(dtUniform));
       newVel.assign(v);
       newPos.assign(pos.add(v.mul(dtUniform)));
@@ -357,7 +404,7 @@ export function createParticleSystem({ count = 30000 } = {}) {
       const pull = innerFade.mul(outerFade).mul(attractMask).mul(cursorPullScale);
       const attractForce = toMouse.div(dist).mul(pull).mul(cursorPolarity);
 
-      const homeForce = home.sub(pos).mul(0.10);
+      const homeForce = home.sub(pos).mul(0.065);
 
       // Entry burst — outward kick during the first ~0.6s after the
       // button-hold bursts. Direction is radial *plus* a strong
@@ -373,7 +420,7 @@ export function createParticleSystem({ count = 30000 } = {}) {
       const entryBurstDir = normalize(normalize(pos).add(burstNoise.mul(1.4)));
       const entryBurstForce = entryBurstDir.mul(entryBurstU.mul(10.0));
 
-      const force = curlForce.add(thermalForce).add(homeForce).add(attractForce).add(entryBurstForce).add(impulseForce);
+      const force = curlForce.add(thermalForce).add(homeForce).add(attractForce).add(entryBurstForce).add(impulseForce).add(ecologyForce);
       const v = vel.mul(0.93).add(force.mul(dtUniform));
       newVel.assign(v);
       newPos.assign(pos.add(v.mul(dtUniform)));
@@ -390,7 +437,8 @@ export function createParticleSystem({ count = 30000 } = {}) {
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
-  material.positionNode = positionBuffer.toAttribute();
+  const particlePos = positionBuffer.toAttribute();
+  material.positionNode = particlePos;
 
   const d = length(uv().sub(0.5)).mul(2.0);
   const alpha = smoothstep(1.0, 0.0, d).pow(1.6);
@@ -416,10 +464,11 @@ export function createParticleSystem({ count = 30000 } = {}) {
   // stay phosphor; particles converging tint progressively; HOLD locks
   // tint at 1; DISSOLVE fades back uniformly.
   const perParticleBlend = colorBlendBuffer.toAttribute();
+  const depthBlend = smoothstep(float(-1.9), float(1.5), particlePos.z);
   const tinted = mix(phosphor, targetColor, perParticleBlend);
-  material.colorNode   = tinted.mul(float(1.0).add(landingPulseU.mul(0.25)));
-  material.opacityNode = alpha.mul(float(0.55).add(landingPulseU.mul(0.10)));
-  material.scaleNode   = float(0.012);
+  material.colorNode   = tinted.mul(mix(float(0.55), float(1.12), depthBlend)).mul(float(1.0).add(landingPulseU.mul(0.20)));
+  material.opacityNode = alpha.mul(mix(float(0.26), float(0.62), depthBlend).add(landingPulseU.mul(0.08)));
+  material.scaleNode   = mix(float(0.007), float(0.016), depthBlend);
 
   const geometry = new THREE.PlaneGeometry(1, 1);
   const mesh = new THREE.InstancedMesh(geometry, material, count);
