@@ -16,6 +16,7 @@ bun run serve        # http://localhost:8000
 ```
 
 Add `?debug=1` to show backend, particle count, phase, and progress.
+Each transmission writes its seed into the URL, so the same arrival can be shared.
 
 ## Project Shape
 

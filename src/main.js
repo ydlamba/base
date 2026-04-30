@@ -27,6 +27,30 @@ const buttonEl       = bootEl?.querySelector('.boot-button');
 const chargeFillEl   = bootEl?.querySelector('.charge-fill');
 const debugMode      = new URLSearchParams(window.location.search).has('debug');
 
+function seedToSlug(seed) {
+  return (seed >>> 0).toString(36);
+}
+
+function parseSeedSlug(raw) {
+  if (!raw) return null;
+  const clean = raw.trim().replace(/^#/, '');
+  if (!/^[0-9a-z]+$/i.test(clean)) return null;
+  const seed = Number.parseInt(clean, 36);
+  return Number.isFinite(seed) ? (seed >>> 0) : null;
+}
+
+function readSharedSeed() {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const query = new URLSearchParams(window.location.search);
+  return parseSeedSlug(hash.get('s')) ?? parseSeedSlug(query.get('s'));
+}
+
+function publishSeed(seed) {
+  const slug = seedToSlug(seed);
+  const next = `${window.location.pathname}${window.location.search}#s=${slug}`;
+  if (window.location.hash !== `#s=${slug}`) window.history.replaceState(null, '', next);
+}
+
 function setProgress(pct) {
   if (progressFillEl) progressFillEl.style.width = pct + '%';
 }
@@ -124,7 +148,7 @@ setProgress(78);
 //        from JS so HOLD reads as "transmission coming through old gear".
 const scenePass  = pass(scene, camera);
 const sceneColor = scenePass.getTextureNode('output');
-const bloomPass  = bloom(sceneColor, 0.40, 0.80, 0.0);
+const bloomPass  = bloom(sceneColor, 0.28, 0.66, 0.0);
 
 const caStrength = uniform(0.30);                // updated per-frame in JS
 const aberrated  = chromaticAberration(sceneColor, caStrength, vec2(0.5), float(1.0));
@@ -144,15 +168,20 @@ let bellFreq = PENTATONIC[0];
 // can voice the right mood without re-reading the logogram.
 let cycleMood = 'calm';
 let cyclePattern = 'single';
+let cycleTransmission = 'unread field';
+const firstCycleSeed = readSharedSeed() ?? ((Math.random() * 0xFFFFFFFF) >>> 0);
+
 function regenerate(cycle = 0) {
-  const seed = (Math.random() * 1e9) | 0;
+  const seed = cycle === 0 ? firstCycleSeed : ((Math.random() * 0xFFFFFFFF) >>> 0);
   const logogram = generateLogogram(seed);
   const targets = buildTargets(logogram, particles.count);
   particles.uploadTargets(targets);
+  publishSeed(seed);
   bellFreq = PENTATONIC[((cycle % PENTATONIC.length) + PENTATONIC.length) % PENTATONIC.length];
 
   cycleMood = logogram.mood;
   cyclePattern = logogram.pattern;
+  cycleTransmission = logogram.name;
   const elementCount = logogram.elements.length;
   // Density scales the bell volume — sparse messages whisper, rich
   // ones speak with more weight. Element count is a good proxy.
@@ -388,9 +417,13 @@ renderer.setAnimationLoop(async (now) => {
   // tone, and the visual landing pulse that synchronizes with the bell
   // at GATHER → HOLD.
   if (phase.idx !== prevPhaseIdx) {
+    if (phase.idx === PHASE.GATHER && prevPhaseIdx !== PHASE.GATHER) {
+      if (noteEl) noteEl.textContent = "the message hasn't arrived yet";
+    }
     if (phase.idx === PHASE.HOLD && prevPhaseIdx !== PHASE.HOLD) {
       // Visual landing event — coincides with the pre-scheduled bell.
       lastLandingTime = elapsed;
+      if (noteEl) noteEl.textContent = `received: ${cycleTransmission}`;
     }
     if (Audio.isStarted() && !reducedMotion) {
       const at = Audio.getTime();
@@ -441,7 +474,7 @@ renderer.setAnimationLoop(async (now) => {
   const landingPulse = Math.max(0, Math.exp(-(elapsed - lastLandingTime) * LANDING.PULSE_DECAY));
 
   caStrength.value =
-    0.30 + holdGlow * 0.40 + landingPulse * 0.15 +
+    0.22 + holdGlow * 0.24 + landingPulse * 0.10 +
     entryBurstLevel * 0.50 + cursorEnergy * 0.12 + impulseLevel * 0.22;
   particles.setLandingPulse(landingPulse);
   // Entry burst — radial kick on all particles for ~0.6s after the
