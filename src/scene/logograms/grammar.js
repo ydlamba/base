@@ -3,15 +3,12 @@
 //
 // A logogram is a single seeded utterance: one mood, one
 // composition pattern, one or more glyphs from the vocabulary.
-// Mood biases which glyphs are likely (mournful pulls toward
-// skull/anchor/tearDrop; playful toward sun/smiley/butterfly) and
-// scales stroke thickness so the same glyph reads quiet, bold,
-// shouting, or fragile depending on its emotional register.
+// Mood biases which structures are likely and scales stroke thickness
+// so the same mark can read quiet, dense, sharp, or unstable.
 // ────────────────────────────────────────────────────────────────
 
 import { transformElements, strokeLine } from './primitives.js';
 import { ring, ellipse } from './shapes.js';
-import * as pic from './pictographs.js';
 import * as run from './runic.js';
 
 // ── Moods ──────────────────────────────────────────────────────
@@ -88,82 +85,26 @@ export function pickMood(rng) {
 
 // ── Vocabulary ─────────────────────────────────────────────────
 // `tone` controls mood bias; `weight` is the base picking weight.
+// Keep this vocabulary abstract. Literal icons make the system
+// read as icons; these should read as script fragments.
 
 const VOCAB = [
-  // Light / joyful
-  { fn: pic.sun,        weight: 8, tone: 'light' },
-  { fn: pic.heart,      weight: 7, tone: 'light' },
-  { fn: pic.flower,     weight: 5, tone: 'light' },
-  { fn: pic.butterfly,  weight: 4, tone: 'light' },
-  { fn: pic.smiley,     weight: 2, tone: 'light' },
-  { fn: pic.musicNote,  weight: 3, tone: 'light' },
-
-  // Familiar / common
-  { fn: pic.eye,        weight: 9, tone: 'familiar' },
-  { fn: pic.tree,       weight: 6, tone: 'familiar' },
-  { fn: pic.mountain,   weight: 6, tone: 'familiar' },
-  { fn: pic.water,      weight: 5, tone: 'familiar' },
-  { fn: pic.hand,       weight: 6, tone: 'familiar' },
-  { fn: pic.house,      weight: 5, tone: 'familiar' },
-  { fn: pic.fish,       weight: 5, tone: 'familiar' },
-  { fn: pic.bird,       weight: 6, tone: 'familiar' },
-  { fn: pic.key,        weight: 5, tone: 'familiar' },
-  { fn: pic.arrow,      weight: 5, tone: 'sharp' },
-  { fn: pic.feather,    weight: 4, tone: 'familiar' },
-  { fn: pic.footprint,  weight: 4, tone: 'familiar' },
-
-  // Dark / heavy
-  { fn: pic.lightning,  weight: 5, tone: 'sharp' },
-  { fn: pic.skull,      weight: 4, tone: 'dark' },
-  { fn: pic.anchor,     weight: 4, tone: 'dark' },
-  { fn: pic.tearDrop,   weight: 4, tone: 'dark' },
-  { fn: pic.flame,      weight: 5, tone: 'dark' },
-
-  // Mystical / cosmic
-  { fn: pic.star,       weight: 7, tone: 'mystical' },
-  { fn: pic.crescent,   weight: 5, tone: 'mystical' },
-  { fn: pic.ankh,       weight: 4, tone: 'mystical' },
-  { fn: pic.spiral,     weight: 5, tone: 'mystical' },
-  { fn: pic.infinity,   weight: 4, tone: 'mystical' },
-  { fn: pic.compass,    weight: 4, tone: 'mystical' },
-
-  // Runic / abstract
-  { fn: run.cuneiform,       weight: 6, tone: 'mystical' },
-  { fn: run.runicSlash,      weight: 6, tone: 'sharp' },
-  { fn: run.tally,           weight: 4, tone: 'familiar' },
-  { fn: run.mayanCount,      weight: 4, tone: 'mystical' },
-  { fn: run.chevronStack,    weight: 4, tone: 'sharp' },
-  { fn: run.comb,            weight: 4, tone: 'familiar' },
-  { fn: run.crossMark,       weight: 4, tone: 'dark' },
-  { fn: run.dottedLine,      weight: 3, tone: 'familiar' },
-  { fn: run.concentricRings, weight: 4, tone: 'mystical' },
-  { fn: run.triangleGlyph,   weight: 4, tone: 'sharp' },
-  { fn: run.polygonGlyph,    weight: 5, tone: 'mystical' },
-
-  // Animals & nature
-  { fn: pic.snake,       weight: 5, tone: 'familiar' },
-  { fn: pic.leaf,        weight: 5, tone: 'light' },
-  { fn: pic.mushroom,    weight: 4, tone: 'light' },
-  { fn: pic.owl,         weight: 4, tone: 'mystical' },
-  { fn: pic.cloud,       weight: 5, tone: 'familiar' },
-  { fn: pic.wave,        weight: 5, tone: 'familiar' },
-  { fn: pic.lotus,       weight: 4, tone: 'light' },
-
-  // Time, balance, structure
-  { fn: pic.hourglass,   weight: 4, tone: 'mystical' },
-  { fn: pic.scales,      weight: 4, tone: 'familiar' },
-  { fn: pic.ladder,      weight: 4, tone: 'familiar' },
-
-  // Mystical extensions
-  { fn: pic.yinyang,     weight: 4, tone: 'mystical' },
-  { fn: pic.mandala,     weight: 4, tone: 'mystical' },
-  { fn: pic.eyeOfHorus,  weight: 4, tone: 'mystical' },
-  { fn: pic.peace,       weight: 2, tone: 'light' },
-  { fn: pic.atom,        weight: 3, tone: 'mystical' },
-
-  // Sharp & broken
-  { fn: pic.dagger,      weight: 4, tone: 'sharp' },
-  { fn: pic.brokenForm,  weight: 4, tone: 'dark' },
+  { fn: run.scriptColumn,     weight: 14, tone: 'familiar' },
+  { fn: run.reedScript,       weight: 12, tone: 'familiar' },
+  { fn: run.axialScript,      weight: 11, tone: 'familiar' },
+  { fn: run.brokenCartouche,  weight: 8,  tone: 'mystical' },
+  { fn: run.latticeSeal,      weight: 8,  tone: 'mystical' },
+  { fn: run.pressureKnots,    weight: 7,  tone: 'dark' },
+  { fn: run.splitTablet,      weight: 7,  tone: 'sharp' },
+  { fn: run.interlock,        weight: 7,  tone: 'familiar' },
+  { fn: run.cuneiform,        weight: 7,  tone: 'mystical' },
+  { fn: run.runicSlash,       weight: 7,  tone: 'sharp' },
+  { fn: run.comb,             weight: 5,  tone: 'familiar' },
+  { fn: run.tally,            weight: 4,  tone: 'familiar' },
+  { fn: run.mayanCount,       weight: 4,  tone: 'mystical' },
+  { fn: run.crossMark,        weight: 4,  tone: 'dark' },
+  { fn: run.dottedLine,       weight: 4,  tone: 'light' },
+  { fn: run.chevronStack,     weight: 1,  tone: 'sharp' },
 ];
 
 function pickGlyph(rng, mood) {
@@ -181,15 +122,15 @@ function pickGlyph(rng, mood) {
 // ── Composition patterns ───────────────────────────────────────
 
 const COMP_BASE = {
-  single:        32,
-  compound:      18,
-  stack:         12,
-  triplet:        7,
-  orbited:        7,
+  single:        20,
+  compound:      22,
+  stack:         16,
+  triplet:        9,
+  orbited:        4,
   framed:         9,
   constellation:  6,
-  cartouche:      5,
-  mirror:         4,
+  cartouche:      8,
+  mirror:         2,
 };
 
 function pickComposition(rng, mood) {
@@ -213,7 +154,10 @@ export function composeLogogram(rng, mood) {
   const single = () => pickGlyph(rng, mood)(rng);
 
   if (pattern === 'single') {
-    return { pattern, elements: transformElements(single(), 0, 0, 1.10) };
+    const out = transformElements(single(), 0, 0, 0.88);
+    if (rng() < 0.70) out.push(...transformElements(single(), (rng() < 0.5 ? -1 : 1) * (0.34 + rng() * 0.10), (rng() - 0.5) * 0.30, 0.22));
+    if (rng() < 0.45) out.push(...transformElements(single(), (rng() - 0.5) * 0.36, (rng() < 0.5 ? -1 : 1) * (0.34 + rng() * 0.08), 0.18));
+    return { pattern, elements: out };
   }
 
   if (pattern === 'compound') {
@@ -253,9 +197,9 @@ export function composeLogogram(rng, mood) {
 
   if (pattern === 'framed') {
     const out = [];
-    out.push(ring(0.62, 0.022, 0.008));
-    if (rng() < 0.45) out.push(ring(0.70, 0.012));
-    out.push(...transformElements(single(), 0, 0, 0.78));
+    out.push(ring(0.58, 0.016, 0.008));
+    if (rng() < 0.45) out.push(ring(0.68, 0.010));
+    out.push(...transformElements(single(), 0, 0, 0.70));
     // 2-4 marks around the frame edge.
     const N = 2 + Math.floor(rng() * 3);
     for (let i = 0; i < N; i++) {
@@ -269,7 +213,7 @@ export function composeLogogram(rng, mood) {
 
   if (pattern === 'constellation') {
     // 4-7 small glyphs scattered in a wider field, connected by thin
-    // lines into a star map. Reads as "writing across the sky".
+    // lines into a signal map.
     const out = [];
     const N = 4 + Math.floor(rng() * 4);
     const positions = [];
@@ -296,9 +240,9 @@ export function composeLogogram(rng, mood) {
   if (pattern === 'cartouche') {
     // Glyph in an Egyptian-style oval frame with end bars.
     const out = [];
-    out.push(ellipse(0.58, 0.40, 0.022));
-    out.push(strokeLine(-0.58, -0.10, -0.58, 0.10, 0.022));
-    out.push(strokeLine( 0.58, -0.10,  0.58, 0.10, 0.022));
+    out.push(ellipse(0.56, 0.38, 0.016));
+    out.push(strokeLine(-0.58, -0.10, -0.58, 0.10, 0.016));
+    out.push(strokeLine( 0.58, -0.10,  0.58, 0.10, 0.016));
     // 2-3 stacked glyphs inside.
     const stackedN = (rng() < 0.45) ? 2 : 1;
     if (stackedN === 1) {

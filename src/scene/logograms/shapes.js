@@ -1,6 +1,6 @@
 // ────────────────────────────────────────────────────────────────
 // Parametric shapes — closed/open curves and polygons that the
-// glyph vocabulary composes into pictographs and runic forms.
+// glyph vocabulary composes into runic and asemic forms.
 // All shapes are centred at the origin in glyph-local space; use
 // transformElement(s) from primitives.js to position them.
 // ────────────────────────────────────────────────────────────────
@@ -140,20 +140,6 @@ export function tally(n, spacing = 0.06, height = 0.20, thick = 0.022) {
 // Triangle (3-gon) convenience; rot=0 means apex pointing up.
 export function triangle(r, rot = 0, thick = 0.022) {
   return polygon(3, r, rot, thick);
-}
-
-// Star with `points` outer points; pointiness in 0..1 controls how
-// deep the inner radius dips between points.
-export function star(points = 5, rOuter = 0.30, pointiness = 0.55, rot = 0, thick = 0.022) {
-  const pts = [];
-  const rInner = rOuter * (1 - pointiness);
-  const N = points * 2;
-  for (let i = 0; i <= N; i++) {
-    const a = rot + (i / N) * Math.PI * 2 - Math.PI / 2;
-    const r = (i % 2) === 0 ? rOuter : rInner;
-    pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
-  }
-  return strokePolyline(pts, thick);
 }
 
 // Ellipse, semi-axes a and b.
