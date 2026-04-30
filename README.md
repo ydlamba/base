@@ -1,59 +1,101 @@
 # lamba.sh
 
-A placeholder for now. Heptapod-style logograms forming and dissolving in a cathode-archive void. *Arrival* on the brain. WebGL2, Web Audio, vanilla JS, no build step.
+Procedural logograms forming and dissolving in a cathode-archive void. *Arrival* on the brain. WebGPU + Three.js + Web Audio, built with Bun.
 
-## Running it
-
-ES modules need an HTTP origin, not `file://`:
+## Run
 
 ```sh
-python3 -m http.server 8000
-# open http://127.0.0.1:8000
+bun install
+bun run dev          # http://localhost:3000
+bun run build        # → ./dist
 ```
 
-Any static host serves it as-is. Cloudflare Pages, Netlify, GitHub Pages, whatever.
+WebGPU primary, automatic WebGL2 fallback via Three.js's `WebGPURenderer`. Same scene, same compute, same audio on both backends.
 
-## What's in here
+## Layout
 
 ```
-index.html              HTML, CSS, entry tag
-README.md               you're here
 src/
-├── main.js             Bootstrap, GL setup, mouse, hints, render loop
-├── audio/
-│   └── audio.js        Drone, brush, bell, hold tone
-├── core/
-│   └── util.js         Math, RNG, curl noise, matrix helpers
-├── render/
-│   ├── shaders.js      GLSL strings
-│   └── webgl.js        Compile/link, FBO helpers
+├── main.js              bootstrap, phase clock, post-process pipeline,
+│                        audio scheduling, hint UI, frame loop
+├── audio/audio.js       Web Audio synth: drone, brush, bell, hold tone
+├── core/util.js         clamp, makeRng (mulberry32), sharpJitter
+├── render/particles.js  GPU-resident particle system
 └── scene/
-    ├── logograms.js    Procedural symbol generator
-    ├── targets.js      Per-particle target precomputation (area-weighted)
-    └── particles.js    Three particle systems plus the phase machine
+    ├── logograms.js     procedural glyph generator
+    └── targets.js       per-particle target precomputation
 ```
 
-Folders split by concern. `core/` is pure utilities. `audio/` is the sound engine. `render/` is WebGL plumbing. `scene/` is the visual logic, what gets drawn and how it moves.
+## Cycle
 
-## How it loops
+| Phase           | Duration | What happens                                            |
+| --------------- | -------- | ------------------------------------------------------- |
+| `INITIAL_DRIFT` |   6.0s   | curl + thermal jitter, particles roam                   |
+| `GATHER`        |   8.0s   | every particle lands at exactly `phaseProgress=1.0`     |
+| `HOLD`          |   4.0s   | glyph locked, breathing, sodium-orange tint             |
+| `DISSOLVE`      |   4.0s   | one of four release modes, front-loaded burst envelope  |
+| `DRIFT`         |  10.0s   | homeward pull restores the initial dispersed state      |
 
-```
-INITIAL_DRIFT   9.0s    curl-noise drift only
-GATHER         12.0s    drawing head sweeps a fresh logogram into existence
-HOLD            5.5s    symbol crisp, bell rings, warm halo
-DISSOLVE        6.0s    particles release back into the flow
-DRIFT          16.0s    ambient idle, then a new random logogram
-```
+Each new GATHER picks a fresh logogram seed and dissolve mode. Bell pitch rotates through a pentatonic across cycles, so the cycle never rings the same note twice in a row.
 
-The cycle never repeats the same symbol. Seed is `Math.random()` per cycle, so the visual is technically infinite.
+## Architecture
+
+Particle state lives on the GPU. Nothing copies back to JS per frame.
+
+| Buffer       | Type                     | Notes                                                    |
+| ------------ | ------------------------ | -------------------------------------------------------- |
+| `position`   | vec3 storage             | written by compute kernel each frame                     |
+| `velocity`   | vec3 storage             | written by compute kernel each frame                     |
+| `home`       | vec3 storage             | spawn position; homeward pull during DRIFT               |
+| `colorBlend` | float storage            | per-particle accent blend, follows convergence state     |
+| `target`     | RGBA32F `DataTexture`    | CPU-written per cycle, sampled by `instanceIndex`        |
+
+`target` is a texture rather than a storage buffer because Three.js's WebGL2 compute emulation can't reliably re-upload storage buffers from CPU.
+
+Convergence is variable-duration. Every particle finishes at `phaseProgress=1.0`, but each starts at a staggered time based on `globalT`. Cubic ease-in keeps the visual reading "in motion" until the very end of GATHER, so the bell, brightness pulse, and color punch all land as one perceived moment.
+
+Each cycle picks one of four dissolve modes:
+
+- `radial`, outward push from origin
+- `vortex`, outward + tangential rotation
+- `wind`, whole field pushed in one direction
+- `cluster`, ~500 groups of ~120 particles each moving as a unit
+
+Mouse interaction uses a rotating susceptibility mask. Only ~30% of nearby particles respond to the cursor at any moment, with the chosen 30% rotating over time. Attraction peaks at ~0.4 world units and falls to zero at the very centre, so particles orbit the cursor rather than collapse into it.
+
+The bell is pre-scheduled at `audioContext.currentTime + GATHER_DURATION` at GATHER start, so it lands with the visual completion regardless of frame jitter.
+
+## Glyph generator
+
+Vocabulary of shape primitives:
+
+- Lines and curves: rings (closed, broken), nested arcs, crescents, hooks, tongues, chords, arches, spokes, accents, ticks, satellites
+- Polygons: triangle, square, pentagon, hexagon, octagon, rectangle
+- Discs: eyelets, drips, splats
+
+Archetypes select coherent subsets: `eye`, `vessel`, `compass`, `beacon`, `constellation`, `halo`, `geometric`, `splatter`, and a few more. Each glyph picks one archetype, then gets a dressing pass on top: edge ticks, scattered interior dots, an optional outer accent. A per-glyph mood scales stroke thickness so some symbols read quiet and faint, others bold.
 
 ## Colors
 
-Deep blue-black background `#040810`. Phosphor cyan-white particles `#A8DCFF`. Sodium-orange cursor and HOLD halo `#FF7B1C`.
+| Role                          | Hex       | Particle mix |
+| ----------------------------- | --------- | ------------ |
+| Background (cathode archive)  | `#0A1828` | —            |
+| Phosphor (default)            | `#A8DCFF` | ~55%         |
+| Sodium-vapor (cursor, accent) | `#FF7B1C` | ~25%         |
+| Magenta (rare)                | `#E04085` | ~12%         |
+| Amber (rare)                  | `#FFB347` | ~8%          |
+
+Per-particle hash assigns each particle one accent. The accent emerges progressively as the particle converges, so a formed glyph carries a mix of warm and cool dots rather than a single tint.
 
 ## On-screen text
 
-Three small cues:
-- Top-left "tap anywhere for sound" appears 2s after load, fades the moment audio unlocks. Browsers block autoplay until you interact.
-- Bottom-center "move your cursor" appears after 10 seconds idle in the DRIFT phase, hides on movement.
-- Bottom-right is the placeholder line, currently "the message hasn't arrived yet".
+| Position      | Text                              | Behavior                                       |
+| ------------- | --------------------------------- | ---------------------------------------------- |
+| top-left      | "tap anywhere for sound"          | shows 2s after load, hides on audio unlock     |
+| bottom-center | "move your cursor"                | shows after 10s idle during DRIFT              |
+| bottom-right  | "the message hasn't arrived yet"  | always visible                                 |
+| bottom-left   | GitHub icon                       | opens this repo, brief click animation         |
+
+## Accessibility
+
+`prefers-reduced-motion` is respected: audio is skipped, the CA spike and brightness pulse are pinned to zero.
