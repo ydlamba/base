@@ -19,8 +19,9 @@ import { buildTargets } from './scene/targets.js';
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ── Phase machine ───────────────────────────────────────────────
-// Mirrors the v1 timings from PROGRESS.md but slightly tightened so we
-// see a full cycle quickly while iterating.
+// Phase durations (seconds). Slightly tightened from v1 for faster cycles
+// while iterating. Single source of truth for both compute (particles.js)
+// and audio (scheduling), so they stay in sync.
 const PHASES = {
   INITIAL_DRIFT: 6.0,
   GATHER:        8.0,
@@ -29,6 +30,16 @@ const PHASES = {
   DRIFT:        10.0,
 };
 const CYCLE_LEN = PHASES.GATHER + PHASES.HOLD + PHASES.DISSOLVE + PHASES.DRIFT;
+
+// ── Landing event — coordinated audiovisual moment at GATHER 100% ───
+// The bell, brightness pulse, color punch, and CA spike all converge on
+// this single instant. The convergence motion is naturally smooth, but
+// the audiovisual event creates the *perceived* moment of completion —
+// the "now" the user feels regardless of how the particles read mid-flight.
+const LANDING = {
+  COLOR_LEAD_S: 0.8,    // color tint ramp duration ending at GATHER 100%
+  PULSE_DECAY:  8.0,    // brightness flash exp-decay rate (faster = sharper)
+};
 
 function phaseAt(t) {
   if (t < PHASES.INITIAL_DRIFT) {
@@ -79,7 +90,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0A1828);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
-camera.position.set(0, 0, 3.1);
+camera.position.set(0, 0, 2.2);
 
 // ── Particle system ─────────────────────────────────────────────
 const particles = createParticleSystem({ count: 60000 });
@@ -96,7 +107,7 @@ await renderer.computeAsync(particles.cursorInitCompute);
 //        from JS so HOLD reads as "transmission coming through old gear".
 const scenePass  = pass(scene, camera);
 const sceneColor = scenePass.getTextureNode('output');
-const bloomPass  = bloom(sceneColor, 0.55, 0.85, 0.0);
+const bloomPass  = bloom(sceneColor, 0.40, 0.80, 0.0);
 
 const caStrength = uniform(0.30);                // updated per-frame in JS
 const aberrated  = chromaticAberration(sceneColor, caStrength, vec2(0.5), float(1.0));
@@ -117,14 +128,16 @@ function regenerate(cycle = 0) {
   particles.uploadTargets(targets);
   bellFreq = PENTATONIC[((cycle % PENTATONIC.length) + PENTATONIC.length) % PENTATONIC.length];
 
-  // Pre-schedule the bell at the audio time the *visual* glyph is read
-  // as complete. Per-particle staggered convergence means the bulk of
-  // particles land by ~75% of GATHER (the high-globalT tail is just a
-  // few stragglers); scheduling at that point lands the bell with the
-  // visual landing instead of with the last trailing particle.
+  // Random dissolve mode for this cycle — radial / vortex / wind / cluster.
+  // Each cycle's release looks different so the loop never feels repetitive.
+  particles.setDissolveMode(Math.floor(Math.random() * 4), Math.random() * 1000);
+
+  // Bell rings exactly at GATHER end (= HOLD start). Convergence math is
+  // now variable-duration so all particles land at phaseProgress=1.0 —
+  // the bell coincides with the visual completion, sample-accurate.
   if (Audio.isStarted() && !reducedMotion) {
     const startAudio = Audio.getTime();
-    Audio.bell(startAudio + PHASES.GATHER * 0.70, bellFreq);
+    Audio.bell(startAudio + PHASES.GATHER, bellFreq);
   }
   return seed;
 }
@@ -242,6 +255,10 @@ window.addEventListener('resize', resize);
 const startTime = performance.now();
 let last = startTime;
 let prevPhaseIdx = -1;
+// Marker for the most recent GATHER → HOLD landing event. The brightness
+// pulse decays from this moment — combined with the simultaneously-
+// scheduled bell, it creates the perceived "now" of message arrival.
+let lastLandingTime = -1000;
 
 renderer.setAnimationLoop(async (now) => {
   const dt      = Math.min((now - last) / 1000, 1 / 20);
@@ -257,10 +274,15 @@ renderer.setAnimationLoop(async (now) => {
     prevCycle = phase.cycle;
   }
 
-  // Phase-transition audio cues. The bell is pre-scheduled in regenerate()
-  // for sample-accurate timing; here we only handle the brush sweeps and
-  // the sustained hold tone (which are less time-critical).
+  // Phase-transition events. The bell is pre-scheduled in regenerate()
+  // for sample-accurate timing; here we trigger the brush sweeps, hold
+  // tone, and the visual landing pulse that synchronizes with the bell
+  // at GATHER → HOLD.
   if (phase.idx !== prevPhaseIdx) {
+    if (phase.idx === PHASE.HOLD && prevPhaseIdx !== PHASE.HOLD) {
+      // Visual landing event — coincides with the pre-scheduled bell.
+      lastLandingTime = elapsed;
+    }
     if (Audio.isStarted() && !reducedMotion) {
       const at = Audio.getTime();
       if (phase.idx === PHASE.GATHER && prevPhaseIdx !== PHASE.GATHER) {
@@ -290,20 +312,26 @@ renderer.setAnimationLoop(async (now) => {
   particles.setDt(dt);
   particles.setPhase(phase.idx, phase.progress);
 
-  // holdGlow drives both the sodium-orange particle tint and the CA
-  // strength. Ramps in over the last 30% of GATHER (bell rings at 70%),
-  // stays at 1 through HOLD, ramps out over DISSOLVE.
+  // ── Landing-coordinated visual events ─────────────────────────
+  // holdGlow ramps from 0→1 across the entire GATHER (so particle
+  // colors emerge progressively as the glyph forms), holds at 1
+  // through HOLD, fades over DISSOLVE. CA strength + landing pulse
+  // hook off it for a coherent audiovisual moment at HOLD start.
   let holdGlow = 0;
-  if (phase.idx === PHASE.GATHER && phase.progress > 0.70) {
-    // Sharp ~0.64s ramp-in synced with the bell — punchy "wow".
-    holdGlow = Math.min((phase.progress - 0.70) / 0.08, 1);
+  if (phase.idx === PHASE.GATHER) {
+    holdGlow = phase.progress;
   } else if (phase.idx === PHASE.HOLD) {
     holdGlow = 1;
   } else if (phase.idx === PHASE.DISSOLVE) {
     holdGlow = 1 - phase.progress;
   }
-  caStrength.value = 0.30 + holdGlow * 0.50;
+
+  // Subtle brightness flash at the landing moment — accent, not flash.
+  const landingPulse = Math.max(0, Math.exp(-(elapsed - lastLandingTime) * LANDING.PULSE_DECAY));
+
+  caStrength.value = 0.30 + holdGlow * 0.40 + landingPulse * 0.15;
   particles.setHoldGlow(holdGlow);
+  particles.setLandingPulse(landingPulse);
 
   await renderer.computeAsync(particles.cursorUpdateCompute);
   await renderer.computeAsync(particles.updateCompute);

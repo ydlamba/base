@@ -20,7 +20,7 @@ import {
   Fn, instanceIndex, instancedArray, uniform, time as uTime,
   vec3, vec4, ivec2, float, int, sin, cos, hash, mx_noise_vec3, color,
   length, smoothstep, uv, mix, saturate, If, oneMinus, max as tslMax,
-  pow as tslPow, sqrt as tslSqrt, normalize, textureLoad,
+  pow as tslPow, sqrt as tslSqrt, normalize, textureLoad, step,
 } from 'three/tsl';
 
 export const PHASE = Object.freeze({
@@ -55,6 +55,10 @@ export function createParticleSystem({ count = 30000 } = {}) {
   // its spawn location. A gentle homeward pull during DRIFT brings the
   // field back to its initial dispersed distribution after each cycle.
   const homeBuffer     = instancedArray(count, 'vec3');
+  // Per-particle color blend — written by the compute kernel based on
+  // each particle's actual convergence state, so drift particles stay
+  // phosphor even during GATHER while converging particles tint.
+  const colorBlendBuffer = instancedArray(count, 'float');
 
   // ── Init: random spawn, zero velocity ───────────────────────────
   const initCompute = Fn(() => {
@@ -96,11 +100,16 @@ export function createParticleSystem({ count = 30000 } = {}) {
   })().compute(count);
 
   // ── Update kernel ───────────────────────────────────────────────
-  const phaseIdx      = uniform(0, 'int');
-  const phaseProgress = uniform(0);
-  const dtUniform     = uniform(1 / 60);
-  const mouseWorld    = uniform(new THREE.Vector3());
-  const holdGlowU     = uniform(0);                // 0..1 — particle tint
+  const phaseIdx       = uniform(0, 'int');
+  const phaseProgress  = uniform(0);
+  const dtUniform      = uniform(1 / 60);
+  const mouseWorld     = uniform(new THREE.Vector3());
+  const holdGlowU      = uniform(0);                // 0..1 — gradual tint
+  const landingPulseU  = uniform(0);                // 0..1 — sharp flash
+  // Dissolve variety: each cycle picks a different mode + seed so
+  // successive dissolves don't look identical.
+  const dissolveMode   = uniform(0, 'int');
+  const dissolveSeedU  = uniform(0);
 
   const TEX_W_NODE = int(TEX_W);
 
@@ -150,19 +159,20 @@ export function createParticleSystem({ count = 30000 } = {}) {
 
     const newPos = pos.toVar();
     const newVel = vel.toVar();
+    const newBlend = float(0).toVar();
 
     If(phaseIdx.equal(int(PHASE.GATHER)), () => {
-      // Smooth transition: drift physics keep running, and per-particle the
-      // blend factor `eased` grows from 0 → 1 over their staggered CONV_DUR
-      // window. mix(driftedPos, target, eased) means particles flow toward
-      // target while still carrying drift energy, instead of freezing-then-
-      // warping. Velocity fades to zero as eased → 1 so they settle softly.
-      const startT = tgt.w.mul(oneMinus(CONV_DUR));
-      const c = saturate(phaseProgress.sub(startT).div(CONV_DUR));
-      // Smoothstep — gentle at both ends, peak migration speed in the
-      // middle. Cubic ease-out felt like a snap because it reached 27%
-      // blend at c=0.1; smoothstep is only 2.8% there.
-      const eased = c.mul(c).mul(c.mul(-2).add(3));
+      // Variable-duration convergence: ALL particles finish at exactly
+      // phaseProgress=1.0, with staggered start times based on globalT.
+      // Cubic ease-in (c³) concentrates the actual landing in the last
+      // ~15% of each particle's window — at c=0.8 a particle is only
+      // 51% blended toward target. This keeps the glyph reading as
+      // in-progress until the very end of GATHER, lands as a single
+      // coordinated moment at 100%.
+      const startT = tgt.w.mul(float(0.70));
+      const span = tslMax(oneMinus(startT), float(0.001));
+      const c = saturate(phaseProgress.sub(startT).div(span));
+      const eased = c.mul(c).mul(c);   // cubic ease-in
 
       const force = curlForce.add(thermalForce).add(center);
       const driftedVel = vel.mul(0.93).add(force.mul(dtUniform));
@@ -170,21 +180,52 @@ export function createParticleSystem({ count = 30000 } = {}) {
 
       newPos.assign(mix(driftedPos, tgt.xyz, eased));
       newVel.assign(driftedVel.mul(oneMinus(eased)));
+      newBlend.assign(eased);
     }).ElseIf(phaseIdx.equal(int(PHASE.HOLD)), () => {
       const breathe = sin(uTime.mul(1.5)).mul(0.0008);
       newPos.assign(tgt.xyz.add(tgt.xyz.mul(breathe)));
       newVel.assign(vec3(0));
+      newBlend.assign(float(1));
     }).ElseIf(phaseIdx.equal(int(PHASE.DISSOLVE)), () => {
-      // Front-loaded explosion: big outward kick at DISSOLVE start that
-      // fades over the phase. (1-progress)² gives a sharp initial burst
-      // then a tail; particles get launched, then coast on momentum into
-      // the curl/thermal field — feels like a release, not a leak.
+      // Front-loaded burst envelope — sharp kick at DISSOLVE start that
+      // fades over the phase. The DIRECTION of the kick depends on which
+      // dissolve mode this cycle rolled, so successive dissolves look
+      // different: radial burst, vortex spin, directional wind, or a
+      // shatter into co-moving clusters.
       const burst = oneMinus(phaseProgress).mul(oneMinus(phaseProgress));
-      const outward = normalize(pos).mul(burst.mul(3.5));
+      const dissolveForce = vec3(0, 0, 0).toVar();
+      const fi = float(instanceIndex);
 
-      // Attraction: same orbit-not-collapse profile as DRIFT, gated by
-      // the rotating susceptibility mask so the cursor grabs a swarm,
-      // not the entire field.
+      If(dissolveMode.equal(int(0)), () => {
+        // Radial burst — push outward from origin.
+        dissolveForce.assign(normalize(pos).mul(burst.mul(3.5)));
+      }).ElseIf(dissolveMode.equal(int(1)), () => {
+        // Vortex — outward + tangential rotation around z-axis.
+        const radial = normalize(pos).mul(burst.mul(2.0));
+        const tangent = vec3(pos.y.negate(), pos.x, float(0));
+        const spin = normalize(tangent).mul(burst.mul(2.8));
+        dissolveForce.assign(radial.add(spin));
+      }).ElseIf(dissolveMode.equal(int(2)), () => {
+        // Directional wind — everyone pushed the same way (per-cycle direction).
+        const wx = sin(dissolveSeedU.mul(2.7));
+        const wy = cos(dissolveSeedU.mul(3.1));
+        const wz = sin(dissolveSeedU.mul(1.9)).mul(0.3);
+        const wind = normalize(vec3(wx, wy, wz));
+        dissolveForce.assign(wind.mul(burst.mul(3.5)));
+      }).Else(() => {
+        // Cluster shatter — particles group by instance index (~120 per
+        // cluster at 60k). Each cluster gets a unique direction so chunks
+        // of particles flow as units instead of dispersing as individuals.
+        const clusterId = fi.div(float(120)).floor();
+        const cs = clusterId.mul(0.0731).add(dissolveSeedU.mul(11.3));
+        const cx = sin(cs.mul(2.7));
+        const cy = cos(cs.mul(3.1));
+        const cz = sin(cs.mul(1.9)).mul(0.4);
+        const clusterDir = normalize(vec3(cx, cy, cz));
+        dissolveForce.assign(clusterDir.mul(burst.mul(3.0)));
+      });
+
+      // Attraction: same orbit-not-collapse profile as DRIFT.
       const toMouse = mouseWorld.sub(pos);
       const dist = tslMax(length(toMouse), float(0.001));
       const innerFade = smoothstep(float(0.0), float(0.30), dist);
@@ -192,10 +233,11 @@ export function createParticleSystem({ count = 30000 } = {}) {
       const pull = innerFade.mul(outerFade).mul(attractMask).mul(3.5);
       const attractForce = toMouse.div(dist).mul(pull);
 
-      const force = curlForce.add(thermalForce).add(center).add(outward).add(attractForce);
+      const force = curlForce.add(thermalForce).add(center).add(dissolveForce).add(attractForce);
       const v = vel.mul(0.95).add(force.mul(dtUniform));
       newVel.assign(v);
       newPos.assign(pos.add(v.mul(dtUniform)));
+      newBlend.assign(oneMinus(phaseProgress));
     }).Else(() => {
       // DRIFT — curl + per-particle jitter + homeward pull + cursor.
       // Attraction profile peaks at ~0.4 world units and falls to zero
@@ -222,6 +264,7 @@ export function createParticleSystem({ count = 30000 } = {}) {
 
     pos.assign(newPos);
     vel.assign(newVel);
+    colorBlendBuffer.element(instanceIndex).assign(newBlend);
   })().compute(count);
 
   // ── Render: instanced billboards ────────────────────────────────
@@ -234,14 +277,31 @@ export function createParticleSystem({ count = 30000 } = {}) {
 
   const d = length(uv().sub(0.5)).mul(2.0);
   const alpha = smoothstep(1.0, 0.0, d).pow(1.6);
-  // Cyan-white in DRIFT; smoothly tinted toward sodium-vapor orange when
-  // the bell rings (GATHER 70%), held through HOLD, fades during DISSOLVE.
-  // Narrative tie: cursor color = transmission color — the message takes
-  // on the sender's signal as it lands.
+  // Color: cyan-white phosphor in DRIFT; once the message lands, each
+  // particle takes on one of three theme accents — phosphor, sodium
+  // orange, or magenta — chosen by per-particle hash. The logogram
+  // becomes a multi-color tapestry instead of a uniform tint, giving
+  // the formed glyph individual character.
   const phosphor = color(0xA8DCFF);
   const sodium   = color(0xFF7B1C);
-  material.colorNode   = mix(phosphor, sodium, holdGlowU.mul(0.7));
-  material.opacityNode = alpha.mul(0.55);
+  const magenta  = color(0xE04085);
+  const amber    = color(0xFFB347);
+
+  const colorSeed = hash(float(instanceIndex).mul(0.0379));
+  // Distribution: ~55% phosphor, ~25% sodium, ~12% magenta, ~8% amber.
+  const t1 = step(float(0.55), colorSeed);
+  const t2 = step(float(0.80), colorSeed);
+  const t3 = step(float(0.92), colorSeed);
+  const targetColor = mix(mix(mix(phosphor, sodium, t1), magenta, t2), amber, t3);
+
+  // Per-particle color blend — read from the float buffer that the
+  // compute kernel writes each frame. Particles still drifting (eased=0)
+  // stay phosphor; particles converging tint progressively; HOLD locks
+  // tint at 1; DISSOLVE fades back uniformly.
+  const perParticleBlend = colorBlendBuffer.toAttribute();
+  const tinted = mix(phosphor, targetColor, perParticleBlend);
+  material.colorNode   = tinted.mul(float(1.0).add(landingPulseU.mul(0.25)));
+  material.opacityNode = alpha.mul(float(0.55).add(landingPulseU.mul(0.10)));
   material.scaleNode   = float(0.012);
 
   const geometry = new THREE.PlaneGeometry(1, 1);
@@ -320,6 +380,11 @@ export function createParticleSystem({ count = 30000 } = {}) {
     setDt(dt) { dtUniform.value = dt; },
     setMouseWorld(x, y, z = 0) { mouseWorld.value.set(x, y, z); },
     setHoldGlow(v) { holdGlowU.value = v; },
+    setLandingPulse(v) { landingPulseU.value = v; },
+    setDissolveMode(mode, seed) {
+      dissolveMode.value = mode;
+      dissolveSeedU.value = seed;
+    },
     count,
   };
 }
