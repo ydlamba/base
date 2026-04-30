@@ -15,7 +15,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import * as Audio from './audio/audio.js';
 import { createParticleSystem, PHASE } from './render/particles.js';
-import { generateLogogram } from './scene/logograms.js';
+import { generateLogogram } from './scene/logograms/index.js';
 import { buildTargets } from './scene/targets.js';
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
