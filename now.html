@@ -73,17 +73,29 @@
       transition: rotate 380ms cubic-bezier(0.2, 0.8, 0.2, 1);
     }
 
+    .print img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
     /* The same impression, darker and just behind: the thickness of the stamp. */
     .edge {
       translate: 0 0 -2.5px;
       filter: brightness(0.45);
     }
 
-    .print img {
+    /* The warning crack, just in front of the ink: one thin, sharp, dark line. */
+    .crack {
       position: absolute;
       inset: 0;
-      width: 100%;
-      height: 100%;
+      overflow: visible;
+      translate: 0 0 0.5px;
+      fill: none;
+      stroke: rgb(24 26 29 / 0.6);
+      stroke-linejoin: miter;
+      stroke-dasharray: 1;
     }
 
     /* Drawn over the seal at the break, centred where it stood. */
@@ -171,24 +183,28 @@
 <body>
   <h1 aria-live="polite">Not now.</h1>
   <div class="stage" aria-hidden="true">
-    <div class="seal"><div class="print edge"></div><div class="print"></div></div>
+    <div class="seal">
+      <div class="print edge"></div><div class="print"></div>
+      <svg class="crack" viewBox="0 0 100 100"></svg>
+    </div>
   </div>
   <p class="updated"><span aria-hidden="true">[</span>updated<span aria-hidden="true">]</span> <time datetime="2026-11-11"></time></p>
   <p class="sorry" aria-hidden="true">:(</p>
 
   <script type="module">
+    // ── Words ───────────────────────────────────────────────────────────────────────────────────
     // One refusal, pressed again and again: annoyed, scolding, disbelieving, firm, a trap, the
-    // door shut, then a weary sigh that the next press answers by starting over.
+    // door shut, then a weary sigh. The press that answers it breaks the seal.
     const phrases = [
       'NOT NOW', 'NOW WHAT?', 'COME ON NOW', 'NOW YOU’RE KIDDING',
       'STILL NOT NOW', 'NOW OR NEVER?', 'NEVER.', 'NOW, AGAIN?',
     ];
 
+    // ── The stamp: its ink and its layers ───────────────────────────────────────────────────────
     // Anybody © 2020 The Anybody Project Authors, SIL Open Font License 1.1.
     // Static instance (width 70, weight 900), subset to the glyphs of the phrases. It is embedded
     // because the seal's layers are SVG images, and images cannot load other files.
     const font = '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';
-    const fontSource = `url(data:font/woff2;base64,${font})`;
 
     // Rubber-stamp ink: wobbly edges, then speckle where the ink didn't take.
     // A different seed is a different impression of the same stamp.
@@ -211,7 +227,7 @@
       image.src = 'data:image/svg+xml,' + encodeURIComponent(`
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 220 220">
           <style>
-            @font-face { font-family: Stamp; src: ${fontSource}; }
+            @font-face { font-family: Stamp; src: url(data:font/woff2;base64,${font}); }
             text { font: 22px Stamp; letter-spacing: 4px; fill: #9a2c24; stroke: none; text-anchor: middle; }
           </style>
           ${inkFilter(seed)}
@@ -236,6 +252,7 @@
       <defs><path id="ring" d="M100 167a67 67 0 1 1 0-134a67 67 0 1 1 0 134"/></defs>
       <text><textPath href="#ring" startOffset="50%">· ${words} ·</textPath></text>`;
 
+    // ── The page ────────────────────────────────────────────────────────────────────────────────
     const seal = document.querySelector('.seal');
     // The edge and the face: identical impressions, kept in step, differing only in depth and shade.
     const layers = [...seal.querySelectorAll('.print')].map(print => ({ print }));
@@ -244,6 +261,8 @@
     const still = matchMedia('(prefers-reduced-motion: reduce)');
     const random = (min, max) => min + Math.random() * (max - min);
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    // Resolves just after the next frame is drawn, so the work that follows never holds a frame up.
+    const afterFrame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
 
     // Last updated, as a day of the year: "day 315, 2026".
     const year = Number(updatedAt.dateTime.slice(0, 4));
@@ -252,6 +271,180 @@
     const showNote = () => document.querySelector('.updated').classList.add('shown');
     document.fonts.load("14px 'Special Elite'").then(showNote, showNote);
 
+    // ── Sound ───────────────────────────────────────────────────────────────────────────────────
+    // One object, a rubber stamp on a wooden desk in a small, quiet room, all synthesised. A browser
+    // lets sound start only from a click, a key, or a finger lifting off the screen; a cue asked for
+    // before then (a first tap begins with the finger going down) plays the moment it may, a little
+    // late rather than not at all.
+    let audio, desk, noise, waiting = [];
+    function hear(cue) {
+      if (audio?.state === 'running') cue(audio.currentTime + 0.01);
+      else waiting.push(cue);
+    }
+
+    /** Starts the sound, building it the first time: everything is played on the desk, heard both
+        directly and through the room (which gets no lows, so it adds space without mud), then
+        through a soft ceiling. */
+    function unlock() {
+      if (!audio) {
+        audio = new AudioContext();
+        audio.addEventListener('statechange', () => {
+          if (audio.state === 'running') for (const cue of waiting.splice(0)) cue(audio.currentTime + 0.01);
+        });
+        noise = new AudioBuffer({ length: audio.sampleRate, sampleRate: audio.sampleRate });
+        const samples = noise.getChannelData(0);
+        for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+        const out = new WaveShaperNode(audio, { curve: ceiling(), oversample: '2x' });
+        desk = new GainNode(audio, { gain: 1.5 });
+        desk.connect(out);
+        desk.connect(new BiquadFilterNode(audio, { type: 'highpass', frequency: 260 }))
+          .connect(new ConvolverNode(audio, { buffer: room() }))
+          .connect(new GainNode(audio, { gain: 0.3 }))
+          .connect(out);
+        out.connect(audio.destination);
+      }
+      audio.resume();
+    }
+
+    /** Untouched below 0.7, anything louder rounded off, the same way every time. Not a compressor:
+        Chrome's plays the first sound after a silence at a third of its level. */
+    function ceiling() {
+      return Float32Array.from({ length: 1025 }, (_, i) => {
+        const x = i / 512 - 1, over = Math.max(0, Math.abs(x) - 0.7);
+        return Math.sign(x) * (Math.min(Math.abs(x), 0.7) + 0.3 * Math.tanh(over / 0.3));
+      });
+    }
+
+    /** The room's echo: the desk and nearest walls first, then a short tail that loses its highs as it dies. */
+    function room() {
+      const rate = audio.sampleRate, echo = new AudioBuffer({ numberOfChannels: 2, length: Math.round(rate * 0.6), sampleRate: rate });
+      for (let channel = 0; channel < 2; channel++) {
+        const samples = echo.getChannelData(channel);
+        let dulled = 0;
+        for (let i = 0; i < samples.length; i++) {
+          const t = i / rate;
+          dulled += (Math.random() * 2 - 1 - dulled) * (0.9 - 0.75 * Math.min(1, t / 0.35));
+          samples[i] = dulled * Math.exp(-t / 0.08) * Math.min(1, t / 0.012);
+        }
+        for (const [delay, level] of [[0.003, 0.7], [0.009, 0.45], [0.016, 0.35], [0.023, 0.25]]) {
+          samples[Math.round((delay + random(0, 0.002)) * rate)] += level * Math.sign(random(-1, 1));
+        }
+      }
+      return echo;
+    }
+
+    /** Where on the screen a sound comes from, as a gentle stereo position. */
+    const panAt = x => (x / innerWidth * 2 - 1) * 0.55;
+    function placed(pan = 0) {
+      const place = new StereoPannerNode(audio, { pan });
+      place.connect(desk);
+      return place;
+    }
+
+    /** A level that rises over the attack and dies away over the decay. */
+    function swell(at, gain, decay, attack) {
+      const level = new GainNode(audio, { gain: 0 });
+      level.gain.setValueAtTime(0, at);
+      level.gain.linearRampToValueAtTime(gain, at + attack);
+      level.gain.exponentialRampToValueAtTime(1e-4, at + attack + decay);
+      return level;
+    }
+
+    /** Filtered noise: paper, rubber, cracks and crunch are all this, tuned differently. */
+    function rustle(to, at, { type = 'bandpass', frequency, q = 1, gain, decay, attack = 0.001 }) {
+      const source = new AudioBufferSourceNode(audio, { buffer: noise });
+      source.connect(new BiquadFilterNode(audio, { type, frequency, Q: q })).connect(swell(at, gain, decay, attack)).connect(to);
+      source.start(at, Math.random() * 0.8, attack + decay + 0.02);
+    }
+
+    /** A struck body rings at a few uneven pitches at once, the higher dying first; wood, ceramic and
+        metal differ only in those ratios. Each mode is [ratio, level, life]. A soft body giving way
+        also falls in pitch. */
+    function ring(to, at, { pitch, modes, gain, decay, fall = 1, attack = 0.001 }) {
+      for (const [ratio, level, life] of modes) {
+        const tone = new OscillatorNode(audio, { frequency: pitch * ratio });
+        tone.frequency.setValueAtTime(pitch * ratio, at);
+        tone.frequency.exponentialRampToValueAtTime(pitch * ratio * fall, at + decay * life);
+        tone.connect(swell(at, gain * level, decay * life, attack)).connect(to);
+        tone.start(at);
+        tone.stop(at + attack + decay * life + 0.02);
+      }
+    }
+
+    // A full, soft thump whose overtones keep it there on a phone's small speaker; a wooden desk;
+    // a ceramic seal and its pieces; the little metal teeth of the date band.
+    const thump = [[1, 1, 1], [2, 0.35, 0.7], [3, 0.14, 0.5]];
+    const wood = [[1, 1, 1], [2.13, 0.4, 0.55], [3.6, 0.2, 0.3]];
+    const ceramic = [[1, 1, 1], [2.76, 0.45, 0.6], [5.4, 0.2, 0.35]];
+    const metal = [[1, 1, 1], [2.41, 0.5, 0.7]];
+
+    const sounds = {
+      // The pad meets paper over wood: rubber giving with a low thump, the wooden mount's tock (which
+      // is what a phone's small speaker carries), and the slap of the paper.
+      press(at, pan) {
+        const to = placed(pan), pitch = random(0.96, 1.04), force = random(0.88, 1.04);
+        ring(to, at, { pitch: 150 * pitch, modes: thump, fall: 0.45, gain: 0.42 * force, decay: 0.12, attack: 0.003 });
+        ring(to, at + 0.002, { pitch: 320 * pitch, modes: wood, gain: 0.26 * force, decay: 0.06 });
+        rustle(to, at, { type: 'lowpass', frequency: 1800, gain: 0.22 * force, decay: 0.025 });
+        rustle(to, at, { frequency: 650 * pitch, q: 3, gain: 0.16 * force, decay: 0.045 });
+      },
+      // One tooth of the date band's ratchet; it also counts the turns when the seal spins.
+      tick(at, { gain = 0.05, pan = 0 } = {}) {
+        const to = placed(pan), give = random(0.85, 1.1);
+        rustle(to, at, { type: 'highpass', frequency: 4200, gain: gain * give, decay: 0.005 });
+        ring(to, at, { pitch: 3100 * random(0.95, 1.05), modes: metal, gain: gain * give * 0.4, decay: 0.02 });
+      },
+      // A crack running a little further: a faint ceramic tick as it bites, then dry snaps, more of
+      // them as it grows.
+      crackle(at, size, pan) {
+        const to = placed(pan);
+        ring(to, at, { pitch: random(2600, 3300), modes: ceramic, gain: 0.04 + size * 0.008, decay: 0.035 });
+        for (let i = 0, t = 0; i < 2 + size; i++, t += random(0.01, 0.028)) {
+          rustle(to, at + t, { frequency: random(2200, 5000), q: 1.4, gain: (0.11 + size * 0.022) * random(0.6, 1), decay: random(0.003, 0.008) });
+        }
+      },
+      // Strain, just before it goes: a creak, a run of tiny stick-slip catches that swells and slows.
+      creak(at, pan) {
+        const to = placed(pan);
+        for (let i = 0, t = 0; i < 14; i++, t += 0.008 + i * 0.002) {
+          const strain = Math.sin(Math.PI * (i + 0.5) / 14);
+          ring(to, at + t, { pitch: random(560, 640), modes: ceramic, fall: 0.85, gain: 0.03 + 0.08 * strain, decay: 0.016 });
+          rustle(to, at + t, { frequency: 1500, q: 2, gain: 0.02 + 0.05 * strain, decay: 0.006 });
+        }
+      },
+      // The blow cracks it through: a sharp report, the whole seal ringing for an instant, and the
+      // cracks racing out across it.
+      snap(at, pan) {
+        const to = placed(pan);
+        rustle(to, at, { type: 'highpass', frequency: 1800, gain: 0.45, decay: 0.014 });
+        ring(to, at, { pitch: 820, modes: ceramic, gain: 0.1, decay: 0.12 });
+        for (let i = 0, t = 0.015; i < 12; i++, t += random(0.008, 0.026)) {
+          rustle(placed(pan + random(-0.25, 0.25)), at + t, { frequency: random(1800, 4800), q: 1.2, gain: 0.16 * (1 - i / 14), decay: random(0.004, 0.012) });
+        }
+      },
+      // Coming apart: a crunch of grains and a scatter of high clinks, spread around where it broke.
+      shatter(at, pan) {
+        for (let i = 0; i < 9; i++) {
+          rustle(placed(pan + random(-0.35, 0.35)), at + random(0, 0.06), { frequency: random(1400, 4200), q: 0.9, gain: random(0.2, 0.36), decay: random(0.02, 0.06) });
+        }
+        for (let i = 0; i < 6; i++) {
+          ring(placed(pan + random(-0.5, 0.5)), at + random(0, 0.09), { pitch: random(2200, 4200), modes: ceramic, gain: random(0.04, 0.08), decay: random(0.06, 0.14) });
+        }
+      },
+      // A piece landing where it falls: a tap on the floor and its own little ring, lower and fuller
+      // the bigger it is, and a softer one as it comes down from its bounce.
+      land(at, { heft, pan, bounce }) {
+        const to = placed(pan), pitch = (3600 - heft * 2400) * random(0.92, 1.08);
+        for (const [after, strength] of [[0, 1], [0.27, bounce * 0.4]]) {
+          if (strength < 0.05) continue;
+          rustle(to, at + after, { frequency: 3000 - heft * 1800, q: 1.8, gain: (0.06 + heft * 0.16) * strength, decay: 0.012 + heft * 0.02 });
+          ring(to, at + after, { pitch, modes: ceramic, gain: (0.02 + heft * 0.04) * strength, decay: 0.03 + heft * 0.04 });
+          if (heft > 0.4) ring(to, at + after, { pitch: 140, modes: thump, fall: 0.7, gain: heft * 0.1 * strength, decay: 0.06 });
+        }
+      },
+    };
+
+    // ── The seal: landing and every impression after ────────────────────────────────────────────
     const [bodies, faces] = await Promise.all([
       Promise.all([3, 11, 19].map(seed => inked(body, seed))),
       Promise.all(phrases.map(words => inked(ringText(words)))),
@@ -263,11 +456,8 @@
     }
     seal.classList.add('landed');
 
-    // Pressing hard and fast winds the seal up. Energy fades between presses; past one
-    // threshold the seal starts to spin, past the next it breaks.
-    const fade = 1, spinsAt = 3, breaksAt = 6.5;
-    let step = 0, energy = 0, chargedAt = 0, spin = 0, speed = 0, frame = 0, lastFrame = 0, broken = false;
-    const charge = now => energy * Math.exp((chargedAt - now) / 1000 / fade);
+    // How many times it has been pressed, and whether it is in pieces.
+    let step = 0, broken = false;
 
     /** The ring rolls like a date-stamp band: the old phrase turns away as the next turns in. */
     function roll(face) {
@@ -293,6 +483,12 @@
       return [50 + (dx * Math.cos(angle) - dy * Math.sin(angle)) / size * 100, 50 + (dx * Math.sin(angle) + dy * Math.cos(angle)) / size * 100];
     }
 
+    /** The stereo position of a point on the seal. */
+    const panOnSeal = ([u]) => {
+      const box = seal.getBoundingClientRect();
+      return panAt(box.left + box.width * u / 100);
+    };
+
     /** No two impressions match: fresh ink, a little drift, and more ink where it was pressed. */
     function reink(point) {
       for (const layer of layers) {
@@ -307,11 +503,75 @@
       seal.style.setProperty('--pressure', `${towards + 180 - drift}deg`);
     }
 
-    function wind(point) {
+    // ── The warning crack ───────────────────────────────────────────────────────────────────────
+    // From the second press a crack opens at the rim, on the side that was pressed, and each press
+    // drives it one length further in, so that on the press before the break it reaches the middle
+    // and a second crack answers from the far side. However slowly it is pressed, it gets there, and
+    // the next press breaks the seal.
+    const crackLayer = seal.querySelector('.crack');
+    const lengths = phrases.length - 2;
+    const crack = { side: 0, route: [], reached: 0, far: [] };
+    const around = (radius, angle) => [50 + Math.cos(angle) * radius, 50 + Math.sin(angle) * radius];
+
+    /** Plans a crack inward from the rim through the given radii, wandering a little as it goes. */
+    const plan = (angle, radii) => radii.map((radius, k) => around(radius, k ? (angle += random(-0.2, 0.2)) : angle));
+
+    /** Scratches one length of crack between two points, jagged on the way, drawn in as it runs. */
+    function scratch(from, to, width, { delay = 0, duration = 140 } = {}) {
+      const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
+      const kinks = [1, 2, 3].map(k => {
+        const aside = random(-0.12, 0.12);
+        return [from[0] + dx * k / 4 - dy * aside, from[1] + dy * k / 4 + dx * aside];
+      });
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      line.setAttribute('d', `M${[from, ...kinks, to].join('L')}`);
+      line.setAttribute('pathLength', '1');
+      line.setAttribute('stroke-width', width);
+      crackLayer.append(line);
+      line.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration, delay, easing: 'ease-out', fill: 'both' });
+    }
+
+    /** Drives the crack one length further; returns how many lengths it has run, or 0 if it did not move. */
+    function deepen(point) {
+      const k = step - 2;
+      if (k < 0 || k >= lengths || still.matches) return 0;
+      if (!k) {
+        const [x, y] = point ? onSeal(point) : [random(0, 100), random(0, 100)];
+        crack.side = Math.atan2(y - 50, x - 50);
+        // A deep first bite through the rings, then even lengths to the middle.
+        crack.route = plan(crack.side, [44, ...Array.from({ length: lengths }, (_, i) => 34 - i * 31.5 / (lengths - 1))]);
+      }
+      const [from, to] = [crack.route[k], crack.route[k + 1]];
+      // Finer as it goes, and its branches finer still.
+      const width = 0.5 - k * 0.065;
+      scratch(from, to, width);
+      if (k % 3 === 0) {
+        const bearing = Math.atan2(to[1] - from[1], to[0] - from[0]) + random(0.6, 1.1) * Math.sign(random(-1, 1));
+        const reach = random(4, 7);
+        scratch(from, [from[0] + Math.cos(bearing) * reach, from[1] + Math.sin(bearing) * reach], width * 0.55);
+      }
+      crack.reached = k + 1;
+      if (crack.reached === lengths) {
+        // One more and it goes: the far side gives as well, a moment later.
+        crack.far = plan(crack.side + Math.PI + random(-0.4, 0.4), [44, 35, 26]);
+        scratch(crack.far[0], crack.far[1], 0.42, { delay: 200, duration: 170 });
+        scratch(crack.far[1], crack.far[2], 0.32, { delay: 370, duration: 170 });
+      }
+      return crack.reached;
+    }
+
+    // ── Winding up: pressed fast, it spins ──────────────────────────────────────────────────────
+    // Pressing hard and fast winds the seal up. Energy fades between presses; past one threshold
+    // the seal starts to spin, past the next it trembles, and when it breaks the pieces keep the spin.
+    const fade = 1, spinsAt = 3, tremblesAt = 5;
+    let energy = 0, chargedAt = 0, spin = 0, ticked = 0, speed = 0, frame = 0, lastFrame = 0;
+    const charge = now => energy * Math.exp((chargedAt - now) / 1000 / fade);
+
+    /** Each press adds energy; enough of it sets the seal spinning. */
+    function wind() {
       const now = performance.now();
       energy = charge(now) + 1;
       chargedAt = now;
-      if (energy >= breaksAt) return shatter(point);
       if (energy > spinsAt && !frame) {
         lastFrame = now;
         frame = requestAnimationFrame(turn);
@@ -336,16 +596,34 @@
         speed = Math.min(Math.sqrt(2 * 900 * (360 - past)), speed + 900 * seconds);
         spin = Math.min(spin + speed * seconds, spin - past + 360);
       }
+      if (spin - ticked >= 30) {
+        ticked = spin - (spin - ticked) % 30;
+        const pan = Math.sin(spin * Math.PI / 180) * 0.35;
+        hear(at => sounds.tick(at, { gain: 0.035, pan }));
+      }
       if (level <= spinsAt && spin % 360 < 0.3) {
-        spin = speed = frame = 0;
+        spin = ticked = speed = frame = 0;
         seal.style.rotate = seal.style.translate = '';
         return;
       }
-      const tremble = Math.max(0, level - 5) * 1.8;
+      const tremble = Math.max(0, level - tremblesAt) * 1.8;
       seal.style.rotate = `${spin - 7}deg`;
       seal.style.translate = `calc(-50% + ${random(-tremble, tremble)}px) calc(-50% + ${random(-tremble, tremble)}px)`;
       frame = requestAnimationFrame(turn);
     }
+
+    // ── Breaking ────────────────────────────────────────────────────────────────────────────────
+    // Where the seal carries ink, read once, while nothing else is going on, from a small rendering
+    // of the impression it breaks in: the last phrase, on the ink of the press that brought it.
+    // Shadows follow the ink rather than the outlines, pieces turn about their ink, and a piece
+    // with no ink at all is left out, so no shadow ever falls under nothing.
+    const grain = 160;
+    const inkMap = sleep(600).then(() => {
+      const pen = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+      pen.canvas.width = pen.canvas.height = grain;
+      for (const image of [bodies[(phrases.length - 1) % bodies.length], faces.at(-1)]) pen.drawImage(image, 0, 0, grain, grain);
+      try { return pen.getImageData(0, 0, grain, grain).data; } catch { return null; /* unreadable: every grain counts the same */ }
+    });
 
     /** Keeps the part of a convex polygon where side(point) <= 0. */
     function keep(polygon, side) {
@@ -359,16 +637,28 @@
       });
     }
 
+    /** Negative where a point is nearer seed a than seed b: one side of the line between their cells. */
     const nearer = (a, b) => ([x, y]) => (x - (a[0] + b[0]) / 2) * (b[0] - a[0]) + (y - (a[1] + b[1]) / 2) * (b[1] - a[1]);
+    // The seal's edge, in percent of its box, as 48 straight sides.
+    const sealRadius = 47.5;
     const rim = Array.from({ length: 48 }, (_, k) => {
       const t = k / 48 * Math.PI * 2;
-      return ([x, y]) => (x - 50) * Math.cos(t) + (y - 50) * Math.sin(t) - 47.5;
+      return ([x, y]) => (x - 50) * Math.cos(t) + (y - 50) * Math.sin(t) - sealRadius;
     });
 
-    /** How it breaks: Voronoi cells around seeds crowded at the impact, trimmed to the seal's
-        circle, so it splinters into small fragments there and big chunks far away. */
-    function fracture(impact, count = 24) {
+    /** How it breaks: Voronoi cells, trimmed to the seal's circle. Seeds in mirrored pairs astride
+        the cracks make the border between each pair run right along them, so it gives where it was
+        already failing; the rest crowd at the impact, so it splinters there and stays in chunks far away. */
+    function fracture(impact, faults, count = 24) {
       const seeds = [];
+      for (const line of faults) {
+        for (let k = 0; k + 1 < line.length; k += 2) {
+          const [[ax, ay], [bx, by]] = [line[k], line[k + 1]];
+          const apart = 4 / Math.hypot(bx - ax, by - ay);
+          const [nx, ny] = [(ay - by) * apart, (bx - ax) * apart];
+          seeds.push([(ax + bx) / 2 + nx, (ay + by) / 2 + ny], [(ax + bx) / 2 - nx, (ay + by) / 2 - ny]);
+        }
+      }
       while (seeds.length < count) {
         const angle = random(0, Math.PI * 2), reach = 70 * random(0, 1) ** 1.8;
         const seed = [impact[0] + Math.cos(angle) * reach, impact[1] + Math.sin(angle) * reach];
@@ -376,27 +666,42 @@
       }
       const disc = rim.reduce(keep, [[0, 0], [100, 0], [100, 100], [0, 100]]);
       return seeds
-        .map(seed => seeds.reduce((cell, other) => (other === seed ? cell : keep(cell, nearer(seed, other))), disc))
-        .filter(cell => cell.length > 2);
+        .map(seed => ({ seed, cell: seeds.reduce((cell, other) => (other === seed ? cell : keep(cell, nearer(seed, other))), disc) }))
+        .filter(({ cell }) => cell.length > 2);
     }
 
-    /** Spun too hard: it cracks from where it was hit, splits, and the pieces tumble down and stay. */
+    /** The last press: struck once more, the seal gives along its cracks and splinters where it was
+        hit, and the pieces tumble down and stay. If it was spinning, they fly off with the spin. */
     async function shatter(point) {
       broken = true;
       cancelAnimationFrame(frame);
-      navigator.vibrate?.([14, 50, 26]);
       seal.style.translate = '';
+      // The blow lands at once: the seal gives under it and springs back just as it comes apart, to
+      // the thump of the press and, a moment later, the snap. How it breaks is worked out once that
+      // first frame is drawn, so the hit is never late.
+      const cracking = 340;
+      const blow = [[{ scale: 0.95, offset: 0.25 }, { scale: 1 }], { duration: cracking, easing: 'ease-out' }];
+      const giving = seal.animate(...blow);
+      const cracked = sleep(cracking);
+      const pan = point ? panAt(point.x) : 0;
+      hear(at => {
+        sounds.press(at, pan);
+        sounds.snap(at + 0.025, pan);
+      });
+      navigator.vibrate?.([14, 50, 26]);
+      await afterFrame();
+
       const box = seal.getBoundingClientRect();
       const size = seal.offsetWidth;
       const tilt = spin - 7;
       const angle = tilt * Math.PI / 180;
-      const turning = speed;
       const middleX = box.left + box.width / 2;
       const middleY = box.top + box.height / 2;
-      let impact = point ? onSeal(point) : [random(20, 80), random(20, 80)];
+      // Struck where it was pressed; from the keyboard, where the crack had got to.
+      let impact = point ? onSeal(point) : crack.route[crack.reached] ?? [50, 50];
       const offset = Math.hypot(impact[0] - 50, impact[1] - 50);
       if (offset > 40) impact = impact.map(value => 50 + (value - 50) * 40 / offset);
-      const cells = fracture(impact);
+      const split = fracture(impact, [crack.route.slice(0, crack.reached + 1), crack.far]);
       const centre = cell => cell.reduce(([x, y], [px, py]) => [x + px / cell.length, y + py / cell.length], [0, 0]);
       const distance = cell => Math.hypot(centre(cell)[0] - impact[0], centre(cell)[1] - impact[1]);
       // From percent of the seal's own box to pixels from its middle, turned as the seal stood.
@@ -410,14 +715,15 @@
       cracks.className = 'cracks';
       cracks.style.left = `${middleX}px`;
       cracks.style.top = `${middleY}px`;
-      cracks.innerHTML = `<svg viewBox="0 0 100 100" style="rotate: ${tilt}deg">${cells
-        .map(cell => `<polygon points="${cell.join(' ')}" pathLength="1" fill="none" stroke="#e4e6e8" stroke-width="0.7" stroke-linejoin="round" stroke-dasharray="1" stroke-dashoffset="1"/>`)
+      cracks.innerHTML = `<svg viewBox="0 0 100 100" style="rotate: ${tilt}deg">${split
+        .map(({ cell }) => `<polygon points="${cell.join(' ')}" pathLength="1" fill="none" stroke="#e4e6e8" stroke-width="0.7" stroke-linejoin="round" stroke-dasharray="1" stroke-dashoffset="1"/>`)
         .join('')}</svg>`;
       document.body.append(cracks);
       cracks.querySelectorAll('polygon').forEach((line, i) => {
-        line.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: 150, delay: distance(cells[i]) * 1.5, easing: 'ease-out', fill: 'forwards' });
+        line.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: 150, delay: distance(split[i].cell) * 1.5, easing: 'ease-out', fill: 'forwards' });
       });
-      const cracked = sleep(340);
+      // The cracks give under the blow in step with the seal.
+      cracks.animate(...blow).startTime = giving.startTime;
 
       // Meanwhile, out of sight beneath the cracking seal, the pieces are built and their falls
       // worked out once and baked into keyframes: they keep the seal's spin, tumble, land on the
@@ -428,7 +734,7 @@
       document.body.append(debris);
       const floor = innerHeight - 84;
       const gravity = innerHeight * 2;
-      const spinning = turning * Math.PI / 180;
+      const spinning = speed * Math.PI / 180;
       const [ix, iy] = toScreen(impact);
       const within = (value, low, high) => {
         const span = high - low, folded = (((value - low) % (2 * span)) + 2 * span) % (2 * span);
@@ -436,36 +742,34 @@
       };
       const nearest = (from, to) => to + 360 * Math.round((from - to) / 360);
 
-      // How much ink each piece really carries, read from a small rendering of the seal as it was.
-      // Shadows follow the ink rather than the outline, pieces turn about their ink, and a piece
-      // with no ink at all is left out, so no shadow ever falls under nothing.
-      const grain = 160;
-      const pen = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
-      pen.canvas.width = pen.canvas.height = grain;
-      for (const image of [layers.at(-1).ground, layers.at(-1).phrase]) pen.drawImage(image, 0, 0, grain, grain);
-      let alpha = null;
-      try { alpha = pen.getImageData(0, 0, grain, grain).data; } catch { /* unreadable: fall back to outlines */ }
-      const inkOf = cell => {
-        const points = cell.map(([u, v]) => [u / 100 * grain, v / 100 * grain]);
-        const inside = (px, py) => points.every(([ax, ay], i) => {
-          const [bx, by] = points[(i + 1) % points.length];
-          return (bx - ax) * (py - ay) - (by - ay) * (px - ax) >= 0;
-        });
-        const [xs, ys] = [0, 1].map(axis => points.map(point => point[axis]));
-        let mass = 0, area = 0, mx = 0, my = 0;
-        for (let py = Math.max(0, Math.floor(Math.min(...ys))); py < Math.min(grain, Math.ceil(Math.max(...ys))); py++) {
-          for (let px = Math.max(0, Math.floor(Math.min(...xs))); px < Math.min(grain, Math.ceil(Math.max(...xs))); px++) {
-            if (!inside(px + 0.5, py + 0.5)) continue;
-            const coverage = alpha ? alpha[(py * grain + px) * 4 + 3] / 255 : 0.3;
-            area += 1;
-            mass += coverage;
-            mx += coverage * (px + 0.5);
-            my += coverage * (py + 0.5);
+      // How much ink each piece carries, and where. Every grain of the ink map belongs to the piece
+      // whose seed is nearest, which is just what a Voronoi cell is, so one pass over it does.
+      const alpha = await inkMap;
+      await afterFrame();
+      const [sx, sy] = [0, 1].map(axis => split.map(({ seed }) => seed[axis]));
+      const [mass, area, mx, my] = [0, 0, 0, 0].map(() => new Float64Array(split.length));
+      for (let py = 0; py < grain; py++) {
+        for (let px = 0; px < grain; px++) {
+          const u = (px + 0.5) / grain * 100, v = (py + 0.5) / grain * 100;
+          if ((u - 50) * (u - 50) + (v - 50) * (v - 50) > sealRadius * sealRadius) continue;
+          let owner = 0, best = Infinity;
+          for (let s = 0; s < sx.length; s++) {
+            const away = (sx[s] - u) * (sx[s] - u) + (sy[s] - v) * (sy[s] - v);
+            if (away < best) {
+              best = away;
+              owner = s;
+            }
           }
+          const coverage = alpha ? alpha[(py * grain + px) * 4 + 3] / 255 : 0.3;
+          area[owner] += 1;
+          mass[owner] += coverage;
+          mx[owner] += coverage * u;
+          my[owner] += coverage * v;
         }
-        return { cell, mass, area, middle: mass ? [mx / mass / grain * 100, my / mass / grain * 100] : centre(cell) };
-      };
-      const pieces = cells.map(inkOf).filter(piece => piece.mass > 4);
+      }
+      const pieces = split
+        .map(({ cell }, s) => ({ cell, mass: mass[s], area: area[s], middle: [mx[s] / mass[s], my[s] / mass[s]] }))
+        .filter(piece => piece.mass > 4);
 
       const fall = ({ cell, mass, area, middle }) => {
         // Where the piece's ink sits, measured from the middle of the seal on screen.
@@ -481,16 +785,24 @@
         const [left, top] = [0, 1].map(axis => Math.min(...cell.map(point => point[axis])) / 100 * size);
         const [right, bottom] = [0, 1].map(axis => Math.max(...cell.map(point => point[axis])) / 100 * size);
         const outline = cell.map(([u, v]) => `${u / 100 * size - left}px ${v / 100 * size - top}px`).join(',');
+        const inPlace = `inset: auto; left: ${-left}px; top: ${-top}px; width: ${size}px; height: ${size}px`;
         for (const { print, ground, phrase } of layers) {
+          const edge = print.classList.contains('edge');
           const face = document.createElement('div');
-          face.className = print.classList.contains('edge') ? 'face edge' : 'face';
+          face.className = edge ? 'face edge' : 'face';
           face.style.cssText = `left: ${left}px; top: ${top}px; width: ${right - left}px; height: ${bottom - top}px;
             transform-origin: ${size / 2 - left}px ${size / 2 - top}px; rotate: ${tilt}deg; clip-path: polygon(${outline})`;
           const copy = print.cloneNode(false);
           copy.classList.remove('edge');
-          copy.style.cssText = `inset: auto; left: ${-left}px; top: ${-top}px; width: ${size}px; height: ${size}px`;
+          copy.style.cssText = inPlace;
           copy.append(ground.cloneNode(), phrase.cloneNode());
           face.append(copy);
+          // The face keeps whatever of the crack ran across it, so nothing vanishes as it falls.
+          if (!edge) {
+            const scar = crackLayer.cloneNode(true);
+            scar.style.cssText = `${inPlace}; translate: none`;
+            face.append(scar);
+          }
           shard.append(face);
         }
         const shadow = document.createElement('div');
@@ -501,13 +813,15 @@
         shadow.style.cssText = `left: ${startX - blot / 2}px; top: ${floor - blot / 2}px; width: ${blot}px; height: ${blot}px`;
         debris.append(shadow, shard);
 
-        // Off it goes: along the spin, away from the impact, a little up, and away into the room.
+        // Off it goes: knocked away from the blow, hardest nearest it, along any spin, a little up,
+        // and back into the room.
         const away = Math.hypot(dx - ix, dy - iy) || 1;
-        const push = random(40, 140);
+        const struck = Math.exp(-away / (size * 0.35));
+        const push = random(40, 140) + 380 * struck;
         const vx = -dy * spinning * 0.28 + (dx - ix) / away * push;
         const vy = dx * spinning * 0.28 + (dy - iy) / away * push - random(140, 300);
-        const depth = random(-300, -20);
-        const tumble = [random(-1, 1) * random(250, 520), random(-1, 1) * random(150, 400), turning * random(0.3, 0.6) + random(-60, 60)];
+        const depth = random(-300, -20) - 260 * struck;
+        const tumble = [random(-1, 1) * random(250, 520), random(-1, 1) * random(150, 400), speed * random(0.3, 0.6) + random(-60, 60)];
         const falling = (-vy + Math.sqrt(vy * vy + 2 * gravity * (floor - 4 - startY))) / gravity;
         const settling = 0.45;
         const total = falling + settling;
@@ -531,20 +845,24 @@
         ].map(([t, s]) => ({ offset: t / total, ...pose(t, s) }));
 
         const timing = { duration: total * 1000, delay: distance(cell) * 2.4, easing: 'linear', fill: 'both' };
-        return [
+        // Heard where it lands, when it lands, and again, softer, as it comes down from its bounce.
+        const thud = { lands: timing.delay / 1000 + falling, heft: Math.min(1, Math.sqrt(mass) / 40), pan: panAt(startX + pose(falling, 0).x), bounce: bounce / 16 };
+        return [thud, [
           shard.animate(samples.map(({ offset, x, y, z, rx, ry, rz }) => ({
             offset, transform: `translate3d(${x}px, ${y}px, ${z}px) rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${rz}deg)`,
           })), timing),
           shadow.animate(samples.map(({ offset, x, z, near }) => ({
             offset, opacity: near * weight, transform: `translate3d(${x}px, 0, ${z}px) rotateX(90deg) scale(${0.6 + 0.4 * near})`,
           })), timing),
-        ];
+        ]];
       };
       // Built a few at a time across frames, so the impact itself never stutters.
-      const landings = [];
+      const landings = [], thuds = [];
       for (const [i, piece] of pieces.entries()) {
-        if (i % 3 === 2) await new Promise(requestAnimationFrame);
-        for (const landing of fall(piece)) {
+        if (i % 3 === 2) await afterFrame();
+        const [thud, animations] = fall(piece);
+        thuds.push(thud);
+        for (const landing of animations) {
           landing.pause();
           landings.push(landing);
         }
@@ -555,31 +873,57 @@
       seal.style.visibility = 'hidden';
       cracks.remove();
       landings.forEach(landing => landing.play());
+      hear(released => {
+        sounds.shatter(released, pan);
+        // Each landing is set up just before it is due, rather than all at once as the pieces let go.
+        for (const { lands, ...thud } of thuds) setTimeout(() => sounds.land(released + lands, thud), lands * 1000 - 120);
+      });
       await Promise.all(landings.map(landing => landing.finished));
       heading.textContent = 'It broke.';
       await sleep(400);
       document.querySelector('.sorry').classList.add('shown');
+      // Nothing will sound again: let the audio rest once the last echo has died.
+      await sleep(1500);
+      audio?.suspend();
     }
 
+    // ── Input ───────────────────────────────────────────────────────────────────────────────────
     /** One press: the seal dips and springs back as the band rolls on to the next phrase. */
     function press(point) {
-      if (broken) return;
       step += 1;
+      // Instead of starting the phrases over, it breaks (the phrases keep cycling with reduced motion).
+      if (step === phrases.length && !still.matches) return shatter(point);
       const index = step % phrases.length;
       heading.textContent = phrases[index];
       roll(faces[index]);
       reink(point);
+      const grown = deepen(point);
+      hear(at => {
+        sounds.press(at, point ? panAt(point.x) : 0);
+        sounds.tick(at + 0.09);
+        sounds.tick(at + 0.16);
+        if (grown) sounds.crackle(at + 0.04, grown, panOnSeal(crack.route[grown]));
+        if (grown === lengths) sounds.creak(at + 0.2, panOnSeal(crack.far[0]));
+      });
       if (still.matches) return;
       seal.animate([{ scale: 0.955, offset: 0.28 }, { scale: 1.012, offset: 0.66 }, { scale: 1 }], { duration: 520, easing: 'ease-out' });
-      wind(point);
+      wind();
     }
 
+    // Every click, tap, Enter or Space is a press, until it has broken; after that nothing happens,
+    // and the audio is left to rest.
     addEventListener('pointerdown', event => {
-      if (event.button === 0) press({ x: event.clientX, y: event.clientY });
+      if (event.button !== 0 || broken) return;
+      if (event.pointerType === 'mouse') unlock();
+      press({ x: event.clientX, y: event.clientY });
+    });
+    addEventListener('pointerup', event => {
+      if (event.pointerType !== 'mouse' && !broken) unlock();
     });
     addEventListener('keydown', event => {
-      if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
+      if (event.repeat || broken || (event.key !== 'Enter' && event.key !== ' ')) return;
       event.preventDefault();
+      unlock();
       press();
     });
   </script>
