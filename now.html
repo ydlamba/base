@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>not now</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15.5' fill='%23e4e6e8'/><circle cx='16' cy='16' r='13' fill='none' stroke='%239a2c24' stroke-width='2.6'/><circle cx='16' cy='16' r='9.2' fill='none' stroke='%239a2c24' stroke-width='1.1'/><g stroke='%239a2c24' stroke-width='2.6' stroke-linecap='round'><path d='M16 11v10'/><path d='M16 11v10' transform='rotate(60 16 16)'/><path d='M16 11v10' transform='rotate(120 16 16)'/></g></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15.5' fill='%23e4e6e8'/><circle cx='16' cy='16' r='12.6' fill='none' stroke='%239a2c24' stroke-width='3.4'/><g stroke='%239a2c24' stroke-width='3.4' stroke-linecap='round'><path d='M16 9.6v12.8'/><path d='M16 9.6v12.8' transform='rotate(60 16 16)'/><path d='M16 9.6v12.8' transform='rotate(120 16 16)'/></g></svg>">
   <link rel="preload" href="/fonts/special-elite.woff2" as="font" type="font/woff2" crossorigin>
   <style>
     /* Special Elite © 2010 Astigmatic, Apache License 2.0 (fonts/special-elite-license.txt).
@@ -130,6 +130,11 @@
 
     .face {
       position: absolute;
+    }
+
+    /* A piece's thickness is already darkened in its picture. */
+    .face.edge {
+      filter: none;
     }
 
     .shadow {
@@ -270,6 +275,26 @@
     // The note never holds up the seal: it shows once its typeface is in, or without it.
     const showNote = () => document.querySelector('.updated').classList.add('shown');
     document.fonts.load("14px 'Special Elite'").then(showNote, showNote);
+
+    // The tab's icon follows the seal: a split in from the rim on the side it cracked, then right
+    // through it on the press before the break, then the pieces. All drawn bold enough to read at
+    // 16 pixels, where a hairline would vanish.
+    const tab = document.querySelector('link[rel=icon]');
+    const [, mark] = decodeURIComponent(tab.getAttribute('href')).match(/<svg[^>]*>(.*)<\/svg>/);
+    const showIcon = body => {
+      tab.href = 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>${body}</svg>`);
+    };
+    const splitIcon = (degrees, through) => showIcon(`${mark}<path d='M30 15.4L26.4 17L23.6 16L20.4 17.6L16 16${through ? 'L12.2 17.4L9 16L5.4 18.2L2 17.4' : ''}'
+      transform='rotate(${degrees} 16 16)' fill='none' stroke='#e4e6e8' stroke-width='1.9' stroke-linejoin='round' stroke-linecap='round'/>`);
+    const brokenIcon = () => {
+      const pieces = [
+        ['M16 15.5L32 11V0H0V14Z', 'translate(0.4 -1.2) rotate(-7 16 16)'],
+        ['M16 15.5L32 11V32H18Z', 'translate(2.6 2.4) rotate(12 16 16)'],
+        ['M16 15.5L18 32H0V14Z', 'translate(-2.6 2) rotate(-11 16 16)'],
+      ];
+      showIcon(`<defs>${pieces.map(([outline], i) => `<clipPath id='piece${i}'><path d='${outline}'/></clipPath>`).join('')}</defs>
+        <g transform='translate(16 16) scale(0.84) translate(-16 -16)'>${pieces.map(([, move], i) => `<g transform='${move}'><g clip-path='url(#piece${i})'>${mark}</g></g>`).join('')}</g>`);
+    };
 
     // ── Sound ───────────────────────────────────────────────────────────────────────────────────
     // One object, a rubber stamp on a wooden desk in a small, quiet room, all synthesised. A browser
@@ -551,7 +576,9 @@
         scratch(from, [from[0] + Math.cos(bearing) * reach, from[1] + Math.sin(bearing) * reach], width * 0.55);
       }
       crack.reached = k + 1;
-      if (crack.reached === lengths) {
+      const last = crack.reached === lengths;
+      if (!k || last) splitIcon(crack.side * 180 / Math.PI - 7, last);
+      if (last) {
         // One more and it goes: the far side gives as well, a moment later.
         crack.far = plan(crack.side + Math.PI + random(-0.4, 0.4), [44, 35, 26]);
         scratch(crack.far[0], crack.far[1], 0.42, { delay: 200, duration: 170 });
@@ -563,7 +590,7 @@
     // ── Winding up: pressed fast, it spins ──────────────────────────────────────────────────────
     // Pressing hard and fast winds the seal up. Energy fades between presses; past one threshold
     // the seal starts to spin, past the next it trembles, and when it breaks the pieces keep the spin.
-    const fade = 1, spinsAt = 3, tremblesAt = 5;
+    const fade = 1, spinsAt = 2.4, tremblesAt = 5;
     let energy = 0, chargedAt = 0, spin = 0, ticked = 0, speed = 0, frame = 0, lastFrame = 0;
     const charge = now => energy * Math.exp((chargedAt - now) / 1000 / fade);
 
@@ -585,7 +612,7 @@
       lastFrame = now;
       const past = spin % 360;
       if (level > spinsAt) {
-        speed += ((level - spinsAt) * 320 - speed) * Math.min(1, seconds * 5);
+        speed += ((level - spinsAt) * 260 - speed) * Math.min(1, seconds * 5);
         spin += speed * seconds;
       } else if (past < 40 && speed < 60) {
         // Barely turned: ease back to upright.
@@ -613,17 +640,70 @@
     }
 
     // ── Breaking ────────────────────────────────────────────────────────────────────────────────
-    // Where the seal carries ink, read once, while nothing else is going on, from a small rendering
-    // of the impression it breaks in: the last phrase, on the ink of the press that brought it.
-    // Shadows follow the ink rather than the outlines, pieces turn about their ink, and a piece
-    // with no ink at all is left out, so no shadow ever falls under nothing.
+    // The impression it breaks in (the last phrase, on the ink of the press that brought it),
+    // flattened into one picture while nothing else is going on, a layer per task. At the break it
+    // is cut into pieces that are plain pictures, which any browser moves cheaply, rather than live,
+    // clipped and masked copies of the seal's layers.
+    const pixels = Math.min(3, devicePixelRatio);
+    const flat = sleep(600).then(async () => {
+      const side = Math.round(seal.offsetWidth * pixels);
+      const pen = Object.assign(document.createElement('canvas'), { width: side, height: side }).getContext('2d');
+      pen.drawImage(bodies[(phrases.length - 1) % bodies.length], 0, 0, side, side);
+      await afterFrame();
+      pen.drawImage(faces.at(-1), 0, 0, side, side);
+      return pen.canvas;
+    });
+
+    // Where it carries ink, from a small copy of that picture. Shadows follow the ink rather than
+    // the outlines, pieces turn about their ink, and a piece with no ink at all is left out, so no
+    // shadow ever falls under nothing.
     const grain = 160;
-    const inkMap = sleep(600).then(() => {
+    const inkMap = flat.then(picture => {
       const pen = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
       pen.canvas.width = pen.canvas.height = grain;
-      for (const image of [bodies[(phrases.length - 1) % bodies.length], faces.at(-1)]) pen.drawImage(image, 0, 0, grain, grain);
+      pen.drawImage(picture, 0, 0, grain, grain);
       try { return pen.getImageData(0, 0, grain, grain).data; } catch { return null; /* unreadable: every grain counts the same */ }
     });
+
+    /** The seal as it stood when struck, as two pictures: its face (turned by its drift, its ink
+        heavier towards the last press, at 92%, with the crack) and its darker thickness. */
+    async function impression(size) {
+      const picture = await flat, side = Math.round(size * pixels), style = getComputedStyle(seal);
+      const [drift, pressure] = ['--drift', '--pressure'].map(name => parseFloat(style.getPropertyValue(name)) * Math.PI / 180);
+      const [face, edge] = [0, 1].map(() => Object.assign(document.createElement('canvas'), { width: side, height: side }));
+      const ink = face.getContext('2d');
+      ink.translate(side / 2, side / 2);
+      ink.rotate(drift);
+      ink.translate(-side / 2, -side / 2);
+      ink.globalAlpha = 0.92;
+      ink.drawImage(picture, 0, 0, side, side);
+      // The pressure mask, as CSS lays out a linear gradient at that angle across a square.
+      const reach = side * (Math.abs(Math.sin(pressure)) + Math.abs(Math.cos(pressure))) / 2;
+      const [dx, dy] = [Math.sin(pressure) * reach, -Math.cos(pressure) * reach];
+      const mask = ink.createLinearGradient(side / 2 - dx, side / 2 - dy, side / 2 + dx, side / 2 + dy);
+      mask.addColorStop(0.38, '#000');
+      mask.addColorStop(1, 'rgb(0 0 0 / 0.6)');
+      ink.globalAlpha = 1;
+      ink.globalCompositeOperation = 'destination-in';
+      ink.fillStyle = mask;
+      ink.fillRect(0, 0, side, side);
+      // The thickness: the same ink, at the seal's edge's brightness of 45%.
+      const dark = edge.getContext('2d');
+      dark.drawImage(face, 0, 0);
+      dark.globalCompositeOperation = 'source-in';
+      dark.fillStyle = 'rgb(69 20 16)';
+      dark.fillRect(0, 0, side, side);
+      // The crack lies on the face, unturned, just as it does on the seal.
+      ink.resetTransform();
+      ink.globalCompositeOperation = 'source-over';
+      ink.scale(side / 100, side / 100);
+      ink.strokeStyle = getComputedStyle(crackLayer).stroke;
+      for (const line of crackLayer.children) {
+        ink.lineWidth = line.getAttribute('stroke-width');
+        ink.stroke(new Path2D(line.getAttribute('d')));
+      }
+      return { face, edge, pixels: side / size };
+    }
 
     /** Keeps the part of a convex polygon where side(point) <= 0. */
     function keep(polygon, side) {
@@ -730,7 +810,6 @@
       // floor, bounce, and stay. Building them now lets the browser draw them before they move.
       const debris = document.createElement('div');
       debris.className = 'stage debris';
-      const sealStyle = getComputedStyle(seal);
       document.body.append(debris);
       const floor = innerHeight - 84;
       const gravity = innerHeight * 2;
@@ -770,6 +849,8 @@
       const pieces = split
         .map(({ cell }, s) => ({ cell, mass: mass[s], area: area[s], middle: [mx[s] / mass[s], my[s] / mass[s]] }))
         .filter(piece => piece.mass > 4);
+      await afterFrame();
+      const pictures = await impression(size);
 
       const fall = ({ cell, mass, area, middle }) => {
         // Where the piece's ink sits, measured from the middle of the seal on screen.
@@ -779,31 +860,28 @@
         const shard = document.createElement('div');
         shard.className = 'shard';
         shard.style.cssText = `left: ${middleX - size / 2}px; top: ${middleY - size / 2}px; width: ${size}px; height: ${size}px; transform-origin: ${size / 2 + dx}px ${size / 2 + dy}px`;
-        for (const name of ['--drift', '--pressure']) shard.style.setProperty(name, sealStyle.getPropertyValue(name));
-        // Cut from both of the seal's layers, so a piece looks exactly like the seal it came from.
-        // Each cut is only as big as its piece, with the impression offset inside, so layers stay small.
-        const [left, top] = [0, 1].map(axis => Math.min(...cell.map(point => point[axis])) / 100 * size);
-        const [right, bottom] = [0, 1].map(axis => Math.max(...cell.map(point => point[axis])) / 100 * size);
-        const outline = cell.map(([u, v]) => `${u / 100 * size - left}px ${v / 100 * size - top}px`).join(',');
-        const inPlace = `inset: auto; left: ${-left}px; top: ${-top}px; width: ${size}px; height: ${size}px`;
-        for (const { print, ground, phrase } of layers) {
-          const edge = print.classList.contains('edge');
-          const face = document.createElement('div');
-          face.className = edge ? 'face edge' : 'face';
-          face.style.cssText = `left: ${left}px; top: ${top}px; width: ${right - left}px; height: ${bottom - top}px;
-            transform-origin: ${size / 2 - left}px ${size / 2 - top}px; rotate: ${tilt}deg; clip-path: polygon(${outline})`;
-          const copy = print.cloneNode(false);
-          copy.classList.remove('edge');
-          copy.style.cssText = inPlace;
-          copy.append(ground.cloneNode(), phrase.cloneNode());
-          face.append(copy);
-          // The face keeps whatever of the crack ran across it, so nothing vanishes as it falls.
-          if (!edge) {
-            const scar = crackLayer.cloneNode(true);
-            scar.style.cssText = `${inPlace}; translate: none`;
-            face.append(scar);
-          }
-          shard.append(face);
+        // Cut from the two pictures of the seal as it stood, thickness behind and face in front, so a
+        // piece looks exactly like the seal it came from, crack and all. Each cut is only as big as
+        // its piece, so the pictures stay small.
+        const left = Math.min(...cell.map(([u]) => u)) / 100 * size, top = Math.min(...cell.map(([, v]) => v)) / 100 * size;
+        const width = Math.ceil((Math.max(...cell.map(([u]) => u)) / 100 * size - left) * pictures.pixels);
+        const height = Math.ceil((Math.max(...cell.map(([, v]) => v)) / 100 * size - top) * pictures.pixels);
+        // Grown by half a pixel, so neighbouring pieces overlap rather than show a hairline of paper.
+        const [cu, cv] = centre(cell), grow = 50 / pictures.pixels / size;
+        const outline = new Path2D(`M${cell.map(([u, v]) => {
+          const out = grow / (Math.hypot(u - cu, v - cv) || 1);
+          return [(u + (u - cu) * out) / 100 * size, (v + (v - cv) * out) / 100 * size];
+        }).join('L')}Z`);
+        for (const [picture, className] of [[pictures.edge, 'face edge'], [pictures.face, 'face']]) {
+          const cut = Object.assign(document.createElement('canvas'), { className, width, height });
+          cut.style.cssText = `left: ${left}px; top: ${top}px; width: ${width / pictures.pixels}px; height: ${height / pictures.pixels}px;
+            transform-origin: ${size / 2 - left}px ${size / 2 - top}px; rotate: ${tilt}deg`;
+          const pen = cut.getContext('2d');
+          pen.scale(pictures.pixels, pictures.pixels);
+          pen.translate(-left, -top);
+          pen.clip(outline);
+          pen.drawImage(picture, 0, 0, size, size);
+          shard.append(cut);
         }
         const shadow = document.createElement('div');
         shadow.className = 'shadow';
@@ -872,6 +950,7 @@
       await cracked;
       seal.style.visibility = 'hidden';
       cracks.remove();
+      brokenIcon();
       landings.forEach(landing => landing.play());
       hear(released => {
         sounds.shatter(released, pan);
