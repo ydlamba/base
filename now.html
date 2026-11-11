@@ -53,6 +53,7 @@
       translate: -50% -50%;
       rotate: -7deg;
       transform-style: preserve-3d;
+      transition: transform 500ms cubic-bezier(0.2, 0.8, 0.2, 1);
       opacity: 0;
       --drift: 0deg;
       --pressure: 200deg;
@@ -193,7 +194,7 @@
       <svg class="crack" viewBox="0 0 100 100"></svg>
     </div>
   </div>
-  <p class="updated"><span aria-hidden="true">[</span>updated<span aria-hidden="true">]</span> <time datetime="2026-11-11"></time></p>
+  <p class="updated"><span aria-hidden="true">[</span>updated<span aria-hidden="true">]</span> <time datetime="2026-11-12"></time></p>
   <p class="sorry" aria-hidden="true">:(</p>
 
   <script type="module">
@@ -600,6 +601,7 @@
       energy = charge(now) + 1;
       chargedAt = now;
       if (energy > spinsAt && !frame) {
+        glance();
         lastFrame = now;
         frame = requestAnimationFrame(turn);
       }
@@ -637,6 +639,26 @@
       seal.style.rotate = `${spin - 7}deg`;
       seal.style.translate = `calc(-50% + ${random(-tremble, tremble)}px) calc(-50% + ${random(-tremble, tremble)}px)`;
       frame = requestAnimationFrame(turn);
+    }
+
+    // ── An invitation: before the first press ───────────────────────────────────────────────────
+    // The page has to say it can be pressed, anywhere, without a word. With a mouse, the seal glances
+    // towards the pointer wherever it is, turning a little flat on the page; never in depth, so it
+    // still looks like a print until the break shows it is not. On any screen, if nobody does
+    // anything, it dips of its own accord, once more a while later, and then waits.
+    const nudges = still.matches ? [] : [3000, 9000].map(delay => setTimeout(() => {
+      seal.animate([{ scale: 0.975, offset: 0.3 }, { scale: 1.006, offset: 0.65 }, { scale: 1 }], { duration: 640, easing: 'ease-out' });
+    }, delay));
+
+    /** Turns the seal up to 2.5° towards the side the pointer is on; straight with no pointer, while it spins, or once broken. */
+    function glance(point) {
+      if (!point || frame || broken) {
+        seal.style.transform = '';
+        return;
+      }
+      const box = seal.getBoundingClientRect();
+      const towards = (point.x - (box.left + box.width / 2)) / (seal.offsetWidth / 2);
+      seal.style.transform = `rotate(${Math.max(-1, Math.min(1, towards)) * 2.5}deg)`;
     }
 
     // ── Breaking ────────────────────────────────────────────────────────────────────────────────
@@ -756,6 +778,9 @@
       broken = true;
       cancelAnimationFrame(frame);
       seal.style.translate = '';
+      // Straight again before it comes apart, so the pieces start exactly where the seal stood.
+      seal.style.transitionDuration = '150ms';
+      glance();
       // The blow lands at once: the seal gives under it and springs back just as it comes apart, to
       // the thump of the press and, a moment later, the snap. How it breaks is worked out once that
       // first frame is drawn, so the hit is never late.
@@ -969,6 +994,7 @@
     // ── Input ───────────────────────────────────────────────────────────────────────────────────
     /** One press: the seal dips and springs back as the band rolls on to the next phrase. */
     function press(point) {
+      nudges.forEach(clearTimeout);
       step += 1;
       // Instead of starting the phrases over, it breaks (the phrases keep cycling with reduced motion).
       if (step === phrases.length && !still.matches) return shatter(point);
@@ -999,6 +1025,17 @@
     addEventListener('pointerup', event => {
       if (event.pointerType !== 'mouse' && !broken) unlock();
     });
+    // A mouse or pen moving anywhere turns the seal's eye, at most once a frame; leaving the page straightens it.
+    let pointer, glancing = 0;
+    addEventListener('pointermove', event => {
+      if (event.pointerType === 'touch' || still.matches) return;
+      pointer = { x: event.clientX, y: event.clientY };
+      glancing ||= requestAnimationFrame(() => {
+        glancing = 0;
+        glance(pointer);
+      });
+    });
+    document.documentElement.addEventListener('pointerleave', () => glance());
     addEventListener('keydown', event => {
       if (event.repeat || broken || (event.key !== 'Enter' && event.key !== ' ')) return;
       event.preventDefault();
