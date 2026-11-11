@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>not now</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15.5' fill='%23e4e6e8'/><circle cx='16' cy='16' r='13' fill='none' stroke='%239a2c24' stroke-width='2.6'/><circle cx='16' cy='16' r='9.2' fill='none' stroke='%239a2c24' stroke-width='1.1'/><g stroke='%239a2c24' stroke-width='2.6' stroke-linecap='round'><path d='M16 11v10'/><path d='M16 11v10' transform='rotate(60 16 16)'/><path d='M16 11v10' transform='rotate(120 16 16)'/></g></svg>">
+  <link rel="preload" href="/fonts/special-elite.woff2" as="font" type="font/woff2" crossorigin>
+  <style>
+    /* Special Elite © 2010 Astigmatic, Apache License 2.0 (fonts/special-elite-license.txt).
+       Subset to the glyphs of the two notes below. */
+    @font-face {
+      font-family: 'Special Elite';
+      src: url('/fonts/special-elite.woff2') format('woff2');
+    }
+
+    body {
+      margin: 0;
+      height: 100svh;
+      overflow: hidden;
+      background: #e4e6e8;
+      /* The site's arrow, its tip dipped in the stamp's ink. */
+      cursor: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='36'><defs><clipPath id='dip'><path d='M0 0h20c-3 2.5-5.5 6-9 8.5S4.5 15.5 0 18z'/></clipPath></defs><path d='M4 3v24l6-6 5 11 5-2-5-11 10-1z' fill='%23e4e6e8'/><path d='M4 3v24l6-6 5 11 5-2-5-11 10-1z' fill='%239a2c24' clip-path='url(%23dip)'/><path d='M4 3v24l6-6 5 11 5-2-5-11 10-1z' fill='none' stroke='%23181a1d' stroke-width='1.5' stroke-linejoin='round'/></svg>") 4 3, default;
+      user-select: none;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    h1 {
+      position: absolute;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    /* The seal lives in a 3D scene from the start, looked at from a little above. It faces the
+       viewer, so it reads as flat, and it is built exactly like the pieces it breaks into. */
+    .stage {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      perspective: 900px;
+      perspective-origin: 50% 20%;
+      transform-style: preserve-3d;
+      pointer-events: none;
+    }
+
+    .seal {
+      position: absolute;
+      left: 50%;
+      top: 46%;
+      width: min(80vmin, 420px);
+      aspect-ratio: 1;
+      translate: -50% -50%;
+      rotate: -7deg;
+      transform-style: preserve-3d;
+      opacity: 0;
+      --drift: 0deg;
+      --pressure: 200deg;
+    }
+
+    .seal.landed {
+      opacity: 1;
+      animation: land 160ms cubic-bezier(0.5, 0, 1, 1);
+    }
+
+    /* One impression: a slight drift in angle, and ink that is heavier where it was pressed. */
+    .print {
+      position: absolute;
+      inset: 0;
+      rotate: var(--drift);
+      mask-image: linear-gradient(var(--pressure), #000 38%, rgb(0 0 0 / 0.6));
+      opacity: 0.92;
+      transition: rotate 380ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    /* The same impression, darker and just behind: the thickness of the stamp. */
+    .edge {
+      translate: 0 0 -2.5px;
+      filter: brightness(0.45);
+    }
+
+    .print img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Drawn over the seal at the break, centred where it stood. */
+    .cracks {
+      position: fixed;
+      z-index: 2;
+      width: min(80vmin, 420px);
+      aspect-ratio: 1;
+      translate: -50% -50%;
+      pointer-events: none;
+    }
+
+    .cracks svg {
+      position: absolute;
+      inset: 0;
+      overflow: visible;
+    }
+
+    /* After the break the pieces fall in a second, identical stage, laid out beneath the first. */
+    .debris {
+      z-index: 0;
+    }
+
+    .debris > * {
+      position: absolute;
+    }
+
+    .shard {
+      transform-style: preserve-3d;
+      will-change: transform;
+    }
+
+    .face {
+      position: absolute;
+    }
+
+    .shadow {
+      border-radius: 50%;
+      background: radial-gradient(closest-side, rgb(24 26 29 / 0.16), transparent);
+    }
+
+    .updated,
+    .sorry {
+      position: fixed;
+      left: 50%;
+      translate: -50% 0;
+      margin: 0;
+      font-family: 'Special Elite', ui-monospace, monospace;
+      opacity: 0;
+      transition: opacity 600ms ease;
+    }
+
+    .updated {
+      bottom: max(22px, env(safe-area-inset-bottom));
+      color: #4f555c;
+      font-size: 14px;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .sorry {
+      top: 46%;
+      translate: -50% -50%;
+      color: #181a1d;
+      font-size: clamp(44px, 9vmin, 72px);
+    }
+
+    .shown {
+      opacity: 1;
+    }
+
+    @keyframes land {
+      from {
+        scale: 1.6;
+        opacity: 0;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .seal.landed { animation: none; }
+      .print { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <h1 aria-live="polite">Not now.</h1>
+  <div class="stage" aria-hidden="true">
+    <div class="seal"><div class="print edge"></div><div class="print"></div></div>
+  </div>
+  <p class="updated"><span aria-hidden="true">[</span>updated<span aria-hidden="true">]</span> <time datetime="2026-11-11"></time></p>
+  <p class="sorry" aria-hidden="true">:(</p>
+
+  <script type="module">
+    // One refusal, pressed again and again: annoyed, scolding, disbelieving, firm, a trap, the
+    // door shut, then a weary sigh that the next press answers by starting over.
+    const phrases = [
+      'NOT NOW', 'NOW WHAT?', 'COME ON NOW', 'NOW YOU’RE KIDDING',
+      'STILL NOT NOW', 'NOW OR NEVER?', 'NEVER.', 'NOW, AGAIN?',
+    ];
+
+    // Anybody © 2020 The Anybody Project Authors, SIL Open Font License 1.1.
+    // Static instance (width 70, weight 900), subset to the glyphs of the phrases. It is embedded
+    // because the seal's layers are SVG images, and images cannot load other files.
+    const font = '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';
+    const fontSource = `url(data:font/woff2;base64,${font})`;
+
+    // Rubber-stamp ink: wobbly edges, then speckle where the ink didn't take.
+    // A different seed is a different impression of the same stamp.
+    const inkFilter = seed => `
+      <filter id="ink" x="-15%" y="-15%" width="130%" height="130%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="${seed}" result="warp"/>
+        <feDisplacementMap in="SourceGraphic" in2="warp" scale="5" xChannelSelector="R" yChannelSelector="G" result="rough"/>
+        <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="2" seed="${seed + 6}"/>
+        <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.5 1.55" result="speckle"/>
+        <feComposite in="rough" in2="speckle" operator="in"/>
+      </filter>`;
+
+    /**
+     * Each layer of the seal is an inked SVG image. The filter runs once when the image is
+     * decoded; after that, animation only moves finished pixels, so it stays smooth.
+     */
+    async function inked(content, seed = 3) {
+      const image = new Image();
+      image.alt = '';
+      image.src = 'data:image/svg+xml,' + encodeURIComponent(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -10 220 220">
+          <style>
+            @font-face { font-family: Stamp; src: ${fontSource}; }
+            text { font: 22px Stamp; letter-spacing: 4px; fill: #9a2c24; stroke: none; text-anchor: middle; }
+          </style>
+          ${inkFilter(seed)}
+          <g filter="url(#ink)" fill="none" stroke="#9a2c24">${content}</g>
+        </svg>`);
+      await image.decode();
+      return image;
+    }
+
+    const body = `
+      <circle cx="100" cy="100" r="95" stroke-width="6"/>
+      <circle cx="100" cy="100" r="88" stroke-width="1.6"/>
+      <circle cx="100" cy="100" r="53" stroke-width="2.4"/>
+      <g stroke-width="11" stroke-linecap="round">
+        <path d="M100 72v56"/>
+        <path d="M100 72v56" transform="rotate(60 100 100)"/>
+        <path d="M100 72v56" transform="rotate(120 100 100)"/>
+      </g>`;
+
+    // A full circle starting at the bottom, so any phrase centres on the top.
+    const ringText = words => `
+      <defs><path id="ring" d="M100 167a67 67 0 1 1 0-134a67 67 0 1 1 0 134"/></defs>
+      <text><textPath href="#ring" startOffset="50%">· ${words} ·</textPath></text>`;
+
+    const seal = document.querySelector('.seal');
+    // The edge and the face: identical impressions, kept in step, differing only in depth and shade.
+    const layers = [...seal.querySelectorAll('.print')].map(print => ({ print }));
+    const heading = document.querySelector('h1');
+    const updatedAt = document.querySelector('time');
+    const still = matchMedia('(prefers-reduced-motion: reduce)');
+    const random = (min, max) => min + Math.random() * (max - min);
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Last updated, as a day of the year: "day 315, 2026".
+    const year = Number(updatedAt.dateTime.slice(0, 4));
+    updatedAt.textContent = `day ${Math.round((Date.parse(updatedAt.dateTime) - Date.UTC(year, 0, 0)) / 86_400_000)}, ${year}`;
+    // The note never holds up the seal: it shows once its typeface is in, or without it.
+    const showNote = () => document.querySelector('.updated').classList.add('shown');
+    document.fonts.load("14px 'Special Elite'").then(showNote, showNote);
+
+    const [bodies, faces] = await Promise.all([
+      Promise.all([3, 11, 19].map(seed => inked(body, seed))),
+      Promise.all(phrases.map(words => inked(ringText(words)))),
+    ]);
+    for (const layer of layers) {
+      layer.ground = bodies[0].cloneNode();
+      layer.phrase = faces[0].cloneNode();
+      layer.print.append(layer.ground, layer.phrase);
+    }
+    seal.classList.add('landed');
+
+    // Pressing hard and fast winds the seal up. Energy fades between presses; past one
+    // threshold the seal starts to spin, past the next it breaks.
+    const fade = 1, spinsAt = 3, breaksAt = 6.5;
+    let step = 0, energy = 0, chargedAt = 0, spin = 0, speed = 0, frame = 0, lastFrame = 0, broken = false;
+    const charge = now => energy * Math.exp((chargedAt - now) / 1000 / fade);
+
+    /** The ring rolls like a date-stamp band: the old phrase turns away as the next turns in. */
+    function roll(face) {
+      const motion = { duration: 560, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' };
+      const swing = degrees => `${still.matches ? 0 : degrees}deg`;
+      for (const layer of layers) {
+        const next = face.cloneNode();
+        layer.print.append(next);
+        layer.phrase.animate([{ rotate: swing(48), opacity: 0 }], { ...motion, fill: 'forwards' })
+          .finished.then(animation => animation.effect.target.remove());
+        next.animate([{ rotate: swing(-48), opacity: 0 }, { rotate: '0deg', opacity: 1 }], { ...motion, delay: 90, fill: 'backwards' });
+        layer.phrase = next;
+      }
+    }
+
+    /** Where a screen point falls on the seal, in percent of the seal's own unrotated box. */
+    function onSeal(point) {
+      const box = seal.getBoundingClientRect();
+      const size = seal.offsetWidth;
+      const angle = -(spin - 7) * Math.PI / 180;
+      const dx = point.x - (box.left + box.width / 2);
+      const dy = point.y - (box.top + box.height / 2);
+      return [50 + (dx * Math.cos(angle) - dy * Math.sin(angle)) / size * 100, 50 + (dx * Math.sin(angle) + dy * Math.cos(angle)) / size * 100];
+    }
+
+    /** No two impressions match: fresh ink, a little drift, and more ink where it was pressed. */
+    function reink(point) {
+      for (const layer of layers) {
+        const next = bodies[step % bodies.length].cloneNode();
+        layer.ground.replaceWith(next);
+        layer.ground = next;
+      }
+      const drift = random(-2.5, 2.5);
+      const [x, y] = point ? onSeal(point) : [random(0, 100), random(0, 100)];
+      const towards = Math.atan2(x - 50, 50 - y) * 180 / Math.PI;
+      seal.style.setProperty('--drift', `${drift}deg`);
+      seal.style.setProperty('--pressure', `${towards + 180 - drift}deg`);
+    }
+
+    function wind(point) {
+      const now = performance.now();
+      energy = charge(now) + 1;
+      chargedAt = now;
+      if (energy >= breaksAt) return shatter(point);
+      if (energy > spinsAt && !frame) {
+        lastFrame = now;
+        frame = requestAnimationFrame(turn);
+      }
+    }
+
+    /** Runs only while the seal spins, then lets it coast round and land upright. */
+    function turn(now) {
+      const seconds = Math.min(0.05, (now - lastFrame) / 1000);
+      const level = charge(now);
+      lastFrame = now;
+      const past = spin % 360;
+      if (level > spinsAt) {
+        speed += ((level - spinsAt) * 320 - speed) * Math.min(1, seconds * 5);
+        spin += speed * seconds;
+      } else if (past < 40 && speed < 60) {
+        // Barely turned: ease back to upright.
+        speed = 0;
+        spin -= past * Math.min(1, seconds * 8);
+      } else {
+        // Coast forward and brake to land exactly upright.
+        speed = Math.min(Math.sqrt(2 * 900 * (360 - past)), speed + 900 * seconds);
+        spin = Math.min(spin + speed * seconds, spin - past + 360);
+      }
+      if (level <= spinsAt && spin % 360 < 0.3) {
+        spin = speed = frame = 0;
+        seal.style.rotate = seal.style.translate = '';
+        return;
+      }
+      const tremble = Math.max(0, level - 5) * 1.8;
+      seal.style.rotate = `${spin - 7}deg`;
+      seal.style.translate = `calc(-50% + ${random(-tremble, tremble)}px) calc(-50% + ${random(-tremble, tremble)}px)`;
+      frame = requestAnimationFrame(turn);
+    }
+
+    /** Keeps the part of a convex polygon where side(point) <= 0. */
+    function keep(polygon, side) {
+      return polygon.flatMap((p, i) => {
+        const q = polygon[(i + 1) % polygon.length];
+        const sp = side(p), sq = side(q);
+        const kept = sp <= 0 ? [p] : [];
+        if (sp <= 0 === sq <= 0) return kept;
+        const t = sp / (sp - sq);
+        return [...kept, [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]];
+      });
+    }
+
+    const nearer = (a, b) => ([x, y]) => (x - (a[0] + b[0]) / 2) * (b[0] - a[0]) + (y - (a[1] + b[1]) / 2) * (b[1] - a[1]);
+    const rim = Array.from({ length: 48 }, (_, k) => {
+      const t = k / 48 * Math.PI * 2;
+      return ([x, y]) => (x - 50) * Math.cos(t) + (y - 50) * Math.sin(t) - 47.5;
+    });
+
+    /** How it breaks: Voronoi cells around seeds crowded at the impact, trimmed to the seal's
+        circle, so it splinters into small fragments there and big chunks far away. */
+    function fracture(impact, count = 24) {
+      const seeds = [];
+      while (seeds.length < count) {
+        const angle = random(0, Math.PI * 2), reach = 70 * random(0, 1) ** 1.8;
+        const seed = [impact[0] + Math.cos(angle) * reach, impact[1] + Math.sin(angle) * reach];
+        if (Math.hypot(seed[0] - 50, seed[1] - 50) < 44) seeds.push(seed);
+      }
+      const disc = rim.reduce(keep, [[0, 0], [100, 0], [100, 100], [0, 100]]);
+      return seeds
+        .map(seed => seeds.reduce((cell, other) => (other === seed ? cell : keep(cell, nearer(seed, other))), disc))
+        .filter(cell => cell.length > 2);
+    }
+
+    /** Spun too hard: it cracks from where it was hit, splits, and the pieces tumble down and stay. */
+    async function shatter(point) {
+      broken = true;
+      cancelAnimationFrame(frame);
+      navigator.vibrate?.([14, 50, 26]);
+      seal.style.translate = '';
+      const box = seal.getBoundingClientRect();
+      const size = seal.offsetWidth;
+      const tilt = spin - 7;
+      const angle = tilt * Math.PI / 180;
+      const turning = speed;
+      const middleX = box.left + box.width / 2;
+      const middleY = box.top + box.height / 2;
+      let impact = point ? onSeal(point) : [random(20, 80), random(20, 80)];
+      const offset = Math.hypot(impact[0] - 50, impact[1] - 50);
+      if (offset > 40) impact = impact.map(value => 50 + (value - 50) * 40 / offset);
+      const cells = fracture(impact);
+      const centre = cell => cell.reduce(([x, y], [px, py]) => [x + px / cell.length, y + py / cell.length], [0, 0]);
+      const distance = cell => Math.hypot(centre(cell)[0] - impact[0], centre(cell)[1] - impact[1]);
+      // From percent of the seal's own box to pixels from its middle, turned as the seal stood.
+      const toScreen = ([u, v]) => {
+        const a = (u - 50) / 100 * size, b = (v - 50) / 100 * size;
+        return [a * Math.cos(angle) - b * Math.sin(angle), a * Math.sin(angle) + b * Math.cos(angle)];
+      };
+
+      // First the cracks: paper-coloured lines spreading out from the impact.
+      const cracks = document.createElement('div');
+      cracks.className = 'cracks';
+      cracks.style.left = `${middleX}px`;
+      cracks.style.top = `${middleY}px`;
+      cracks.innerHTML = `<svg viewBox="0 0 100 100" style="rotate: ${tilt}deg">${cells
+        .map(cell => `<polygon points="${cell.join(' ')}" pathLength="1" fill="none" stroke="#e4e6e8" stroke-width="0.7" stroke-linejoin="round" stroke-dasharray="1" stroke-dashoffset="1"/>`)
+        .join('')}</svg>`;
+      document.body.append(cracks);
+      cracks.querySelectorAll('polygon').forEach((line, i) => {
+        line.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: 150, delay: distance(cells[i]) * 1.5, easing: 'ease-out', fill: 'forwards' });
+      });
+      const cracked = sleep(340);
+
+      // Meanwhile, out of sight beneath the cracking seal, the pieces are built and their falls
+      // worked out once and baked into keyframes: they keep the seal's spin, tumble, land on the
+      // floor, bounce, and stay. Building them now lets the browser draw them before they move.
+      const debris = document.createElement('div');
+      debris.className = 'stage debris';
+      const sealStyle = getComputedStyle(seal);
+      document.body.append(debris);
+      const floor = innerHeight - 84;
+      const gravity = innerHeight * 2;
+      const spinning = turning * Math.PI / 180;
+      const [ix, iy] = toScreen(impact);
+      const within = (value, low, high) => {
+        const span = high - low, folded = (((value - low) % (2 * span)) + 2 * span) % (2 * span);
+        return low + (folded > span ? 2 * span - folded : folded);
+      };
+      const nearest = (from, to) => to + 360 * Math.round((from - to) / 360);
+
+      // How much ink each piece really carries, read from a small rendering of the seal as it was.
+      // Shadows follow the ink rather than the outline, pieces turn about their ink, and a piece
+      // with no ink at all is left out, so no shadow ever falls under nothing.
+      const grain = 160;
+      const pen = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+      pen.canvas.width = pen.canvas.height = grain;
+      for (const image of [layers.at(-1).ground, layers.at(-1).phrase]) pen.drawImage(image, 0, 0, grain, grain);
+      let alpha = null;
+      try { alpha = pen.getImageData(0, 0, grain, grain).data; } catch { /* unreadable: fall back to outlines */ }
+      const inkOf = cell => {
+        const points = cell.map(([u, v]) => [u / 100 * grain, v / 100 * grain]);
+        const inside = (px, py) => points.every(([ax, ay], i) => {
+          const [bx, by] = points[(i + 1) % points.length];
+          return (bx - ax) * (py - ay) - (by - ay) * (px - ax) >= 0;
+        });
+        const [xs, ys] = [0, 1].map(axis => points.map(point => point[axis]));
+        let mass = 0, area = 0, mx = 0, my = 0;
+        for (let py = Math.max(0, Math.floor(Math.min(...ys))); py < Math.min(grain, Math.ceil(Math.max(...ys))); py++) {
+          for (let px = Math.max(0, Math.floor(Math.min(...xs))); px < Math.min(grain, Math.ceil(Math.max(...xs))); px++) {
+            if (!inside(px + 0.5, py + 0.5)) continue;
+            const coverage = alpha ? alpha[(py * grain + px) * 4 + 3] / 255 : 0.3;
+            area += 1;
+            mass += coverage;
+            mx += coverage * (px + 0.5);
+            my += coverage * (py + 0.5);
+          }
+        }
+        return { cell, mass, area, middle: mass ? [mx / mass / grain * 100, my / mass / grain * 100] : centre(cell) };
+      };
+      const pieces = cells.map(inkOf).filter(piece => piece.mass > 4);
+
+      const fall = ({ cell, mass, area, middle }) => {
+        // Where the piece's ink sits, measured from the middle of the seal on screen.
+        const [dx, dy] = toScreen(middle);
+        const startX = middleX + dx, startY = middleY + dy;
+
+        const shard = document.createElement('div');
+        shard.className = 'shard';
+        shard.style.cssText = `left: ${middleX - size / 2}px; top: ${middleY - size / 2}px; width: ${size}px; height: ${size}px; transform-origin: ${size / 2 + dx}px ${size / 2 + dy}px`;
+        for (const name of ['--drift', '--pressure']) shard.style.setProperty(name, sealStyle.getPropertyValue(name));
+        // Cut from both of the seal's layers, so a piece looks exactly like the seal it came from.
+        // Each cut is only as big as its piece, with the impression offset inside, so layers stay small.
+        const [left, top] = [0, 1].map(axis => Math.min(...cell.map(point => point[axis])) / 100 * size);
+        const [right, bottom] = [0, 1].map(axis => Math.max(...cell.map(point => point[axis])) / 100 * size);
+        const outline = cell.map(([u, v]) => `${u / 100 * size - left}px ${v / 100 * size - top}px`).join(',');
+        for (const { print, ground, phrase } of layers) {
+          const face = document.createElement('div');
+          face.className = print.classList.contains('edge') ? 'face edge' : 'face';
+          face.style.cssText = `left: ${left}px; top: ${top}px; width: ${right - left}px; height: ${bottom - top}px;
+            transform-origin: ${size / 2 - left}px ${size / 2 - top}px; rotate: ${tilt}deg; clip-path: polygon(${outline})`;
+          const copy = print.cloneNode(false);
+          copy.classList.remove('edge');
+          copy.style.cssText = `inset: auto; left: ${-left}px; top: ${-top}px; width: ${size}px; height: ${size}px`;
+          copy.append(ground.cloneNode(), phrase.cloneNode());
+          face.append(copy);
+          shard.append(face);
+        }
+        const shadow = document.createElement('div');
+        shadow.className = 'shadow';
+        // Sized to the ink it carries, and fainter under a piece that is mostly bare paper.
+        const blot = Math.max(12, Math.sqrt(mass) / grain * size * 2.2);
+        const weight = 0.45 + 0.55 * Math.min(1, mass / area * 2.5);
+        shadow.style.cssText = `left: ${startX - blot / 2}px; top: ${floor - blot / 2}px; width: ${blot}px; height: ${blot}px`;
+        debris.append(shadow, shard);
+
+        // Off it goes: along the spin, away from the impact, a little up, and away into the room.
+        const away = Math.hypot(dx - ix, dy - iy) || 1;
+        const push = random(40, 140);
+        const vx = -dy * spinning * 0.28 + (dx - ix) / away * push;
+        const vy = dx * spinning * 0.28 + (dy - iy) / away * push - random(140, 300);
+        const depth = random(-300, -20);
+        const tumble = [random(-1, 1) * random(250, 520), random(-1, 1) * random(150, 400), turning * random(0.3, 0.6) + random(-60, 60)];
+        const falling = (-vy + Math.sqrt(vy * vy + 2 * gravity * (floor - 4 - startY))) / gravity;
+        const settling = 0.45;
+        const total = falling + settling;
+        const landed = tumble.map(rate => rate * falling);
+        const rest = [nearest(landed[0], 90), nearest(landed[1], 0), landed[2] + tumble[2] * 0.12];
+        const bounce = Math.min(16, (vy + gravity * falling) * 0.012);
+
+        const pose = (t, s) => {
+          const flight = Math.min(t, falling);
+          const ease = 1 - (1 - s) ** 3;
+          const x = within(startX + vx * flight + vx * 0.1 * ease, 40, innerWidth - 40) - startX;
+          const y = s ? floor - 4 - bounce * Math.sin(Math.PI * Math.min(1, s / 0.6)) - startY
+                      : vy * flight + gravity * flight * flight / 2;
+          const z = depth * flight / falling + depth * 0.08 * ease;
+          const [rx, ry, rz] = s ? landed.map((value, i) => value + (rest[i] - value) * ease) : tumble.map(rate => rate * flight);
+          return { x, y, z, rx, ry, rz, near: Math.min(1, flight / falling) };
+        };
+        const samples = [
+          ...Array.from({ length: 17 }, (_, k) => [k / 16 * falling, 0]),
+          ...Array.from({ length: 10 }, (_, k) => [falling + (k + 1) / 10 * settling, (k + 1) / 10]),
+        ].map(([t, s]) => ({ offset: t / total, ...pose(t, s) }));
+
+        const timing = { duration: total * 1000, delay: distance(cell) * 2.4, easing: 'linear', fill: 'both' };
+        return [
+          shard.animate(samples.map(({ offset, x, y, z, rx, ry, rz }) => ({
+            offset, transform: `translate3d(${x}px, ${y}px, ${z}px) rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${rz}deg)`,
+          })), timing),
+          shadow.animate(samples.map(({ offset, x, z, near }) => ({
+            offset, opacity: near * weight, transform: `translate3d(${x}px, 0, ${z}px) rotateX(90deg) scale(${0.6 + 0.4 * near})`,
+          })), timing),
+        ];
+      };
+      // Built a few at a time across frames, so the impact itself never stutters.
+      const landings = [];
+      for (const [i, piece] of pieces.entries()) {
+        if (i % 3 === 2) await new Promise(requestAnimationFrame);
+        for (const landing of fall(piece)) {
+          landing.pause();
+          landings.push(landing);
+        }
+      }
+
+      // Then it comes apart.
+      await cracked;
+      seal.style.visibility = 'hidden';
+      cracks.remove();
+      landings.forEach(landing => landing.play());
+      await Promise.all(landings.map(landing => landing.finished));
+      heading.textContent = 'It broke.';
+      await sleep(400);
+      document.querySelector('.sorry').classList.add('shown');
+    }
+
+    /** One press: the seal dips and springs back as the band rolls on to the next phrase. */
+    function press(point) {
+      if (broken) return;
+      step += 1;
+      const index = step % phrases.length;
+      heading.textContent = phrases[index];
+      roll(faces[index]);
+      reink(point);
+      if (still.matches) return;
+      seal.animate([{ scale: 0.955, offset: 0.28 }, { scale: 1.012, offset: 0.66 }, { scale: 1 }], { duration: 520, easing: 'ease-out' });
+      wind(point);
+    }
+
+    addEventListener('pointerdown', event => {
+      if (event.button === 0) press({ x: event.clientX, y: event.clientY });
+    });
+    addEventListener('keydown', event => {
+      if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      press();
+    });
+  </script>
+</body>
+</html>
